@@ -1,0 +1,272 @@
+[
+  {
+    "config": {
+      "metric": "cost",
+      "baseline": "ss_policy",
+      "label": "Restocking Policy (S,s)=(100,60)"
+    },
+    "cost": 667.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 0.00022864341735839844
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "baseline": "tool_only",
+      "label": "Demand Forecasting Tool"
+    },
+    "cost": 102.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 0.00014543533325195312
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "standalone",
+      "model_tier": "small",
+      "label": "standalone / small"
+    },
+    "cost": 315.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 7.255673885345459
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "info_sharing",
+      "model_tier": "small",
+      "label": "info_sharing / small"
+    },
+    "cost": 244.0,
+    "bullwhip": 1.0,
+    "elapsed_sec": 15.088598012924194
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "standalone_tool",
+      "model_tier": "small",
+      "label": "standalone_tool / small"
+    },
+    "cost": 91.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 7.08976936340332
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "info_sharing_tool",
+      "model_tier": "small",
+      "label": "info_sharing_tool / small"
+    },
+    "cost": 413.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 8.452346563339233
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "negotiation_tool",
+      "model_tier": "small",
+      "label": "negotiation_tool / small"
+    },
+    "cost": 203.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 70.98374915122986
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "standalone",
+      "model_tier": "large",
+      "label": "standalone / large"
+    },
+    "cost": 147.0,
+    "bullwhip": 0.037037037037037035,
+    "elapsed_sec": 6.350765943527222
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "info_sharing",
+      "model_tier": "large",
+      "label": "info_sharing / large"
+    },
+    "cost": 147.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 8.381141424179077
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "standalone_tool",
+      "model_tier": "large",
+      "label": "standalone_tool / large"
+    },
+    "cost": 102.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 6.325508117675781
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "info_sharing_tool",
+      "model_tier": "large",
+      "label": "info_sharing_tool / large"
+    },
+    "cost": 144.0,
+    "bullwhip": 1.0,
+    "elapsed_sec": 514.3038976192474
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "negotiation_tool",
+      "model_tier": "large",
+      "label": "negotiation_tool / large"
+    },
+    "cost": 102.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 70.52791380882263
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "baseline": "ss_policy",
+      "label": "Restocking Policy (S,s)=(100,60)"
+    },
+    "cost": 667.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 0.00016021728515625
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "baseline": "tool_only",
+      "label": "EOQ tool"
+    },
+    "cost": 96.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 0.0003223419189453125
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "baseline": "chen_2000",
+      "label": "Chen et al. (2000)"
+    },
+    "cost": 134.0,
+    "bullwhip": 1.0,
+    "elapsed_sec": 0.00018978118896484375
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "standalone",
+      "model_tier": "small",
+      "label": "standalone / small"
+    },
+    "cost": 305.0,
+    "bullwhip": 0.1111111111111111,
+    "elapsed_sec": 6.407445430755615
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "info_sharing",
+      "model_tier": "small",
+      "label": "info_sharing / small"
+    },
+    "cost": 98.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 8.866076231002808
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "standalone_tool",
+      "model_tier": "small",
+      "label": "standalone_tool / small"
+    },
+    "cost": 254.0,
+    "bullwhip": 1.0,
+    "elapsed_sec": 6.558424711227417
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "info_sharing_tool",
+      "model_tier": "small",
+      "label": "info_sharing_tool / small"
+    },
+    "cost": 148.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 10.451017379760742
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "negotiation_tool",
+      "model_tier": "small",
+      "label": "negotiation_tool / small"
+    },
+    "cost": 300.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 71.25189089775085
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "standalone",
+      "model_tier": "large",
+      "label": "standalone / large"
+    },
+    "cost": 127.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 7.461665153503418
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "info_sharing",
+      "model_tier": "large",
+      "label": "info_sharing / large"
+    },
+    "cost": 127.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 10.871275901794434
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "standalone_tool",
+      "model_tier": "large",
+      "label": "standalone_tool / large"
+    },
+    "cost": 96.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 6.896003007888794
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "info_sharing_tool",
+      "model_tier": "large",
+      "label": "info_sharing_tool / large"
+    },
+    "cost": 96.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 9.565946102142334
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "negotiation_tool",
+      "model_tier": "large",
+      "label": "negotiation_tool / large"
+    },
+    "cost": 97.0,
+    "bullwhip": 0.0,
+    "elapsed_sec": 81.31279563903809
+  }
+]

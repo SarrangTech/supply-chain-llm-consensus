@@ -1,0 +1,118 @@
+"""
+Thin client around OpenRouter's OpenAI-compatible chat completions endpoint.
+
+DEVIATION FROM THE PAPER: the paper calls the Gemini API directly. Per the
+user's explicit choice (no Gemini access in this environment), this client
+targets OpenRouter instead, serving Llama 3.1 8B / 70B Instruct as analogs
+of Gemini 1.5 Flash / Pro (see config.py for the exact mapping and the
+caveats around it).
+
+Retry behaviour mirrors the paper's stated reasoning (Section 5.2): "the
+small degree of randomness [temperature=0.1] allows for agents to repeat
+queries which returned an incorrectly-formatted output from the LLM, and to
+deliver results in the correct format in subsequent iterations." We
+implement that literally: on a malformed/unparseable response, re-query
+(same prompt, same non-zero temperature) up to MAX_RETRIES times.
+"""
+import os
+import re
+
+import requests
+
+from .config import FIXED_PARAMS, OPENROUTER_API_KEY_ENV_VAR, OPENROUTER_BASE_URL
+
+MAX_RETRIES = 3
+ORDER_PATTERN = re.compile(r"\[\[\s*(-?\d+(?:\.\d+)?)\s*\]\]")
+
+# FLAGGED JUDGMENT CALL / NEW ADAPTATION (not in the paper, disclosed here
+# and in NOTES_AND_ASSUMPTIONS.md): Llama 3.1 (unlike the paper's Gemini
+# models) tends to emit step-by-step markdown reasoning by default, which
+# blows through the paper's fixed 90-token output budget before ever
+# reaching a bracketed answer. Rather than raise max_output_tokens (a fixed,
+# stated parameter we don't want to silently change), we add a system
+# message enforcing terse output for the strict-format calls only. This is
+# the same kind of per-model prompt adaptation the paper itself describes
+# doing for Gemini Pro vs Flash (Appendix 3), applied here to a different
+# model family that needs a different (stronger) fix for a different
+# failure mode.
+_STRICT_FORMAT_SYSTEM_MESSAGE = (
+    "You are a supply chain ordering agent. You must respond with ONLY the "
+    "final answer in the exact requested format. Never show step-by-step "
+    "reasoning, headers, or any explanation text."
+)
+
+
+class MalformedOutputError(Exception):
+    pass
+
+
+class LLMClient:
+    def __init__(self, model: str, api_key: str | None = None):
+        self.model = model
+        self.api_key = api_key or os.environ.get(OPENROUTER_API_KEY_ENV_VAR)
+        if not self.api_key:
+            raise RuntimeError(
+                f"No API key found. Set the {OPENROUTER_API_KEY_ENV_VAR} environment "
+                "variable, or pass api_key= explicitly."
+            )
+
+    def _call_raw(self, messages: list[dict]) -> str:
+        resp = requests.post(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self.model,
+                "messages": messages,
+                "temperature": FIXED_PARAMS["temperature"],
+                "max_tokens": FIXED_PARAMS["max_output_tokens"],
+            },
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+
+    def get_order_decision(self, prompt: str, max_order: int = FIXED_PARAMS["max_order_amount"]) -> int:
+        """
+        Send `prompt` as a user message (with a strict-format system
+        message prepended), parse an integer order amount out of a
+        `[[N]]`-formatted reply, retrying on malformed output up to
+        MAX_RETRIES times (see module docstring).
+        """
+        messages = [
+            {"role": "system", "content": _STRICT_FORMAT_SYSTEM_MESSAGE},
+            {"role": "user", "content": prompt},
+        ]
+        last_error = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                content = self._call_raw(messages)
+                match = ORDER_PATTERN.search(content)
+                if not match:
+                    raise MalformedOutputError(f"No [[N]] pattern found in: {content!r}")
+                value = float(match.group(1))
+                # Hard-coded backstop, independent of prompt instructions
+                # (Section 7.1: "constraints are handled ... through
+                # hard-coded backstops in the environment").
+                return int(max(0, min(round(value), max_order)))
+            except (MalformedOutputError, KeyError, ValueError, requests.RequestException) as e:
+                last_error = e
+        raise MalformedOutputError(
+            f"Failed to get a well-formatted order decision after {MAX_RETRIES} attempts: {last_error}"
+        )
+
+    def chat(self, prompt: str, strict_format: bool = False) -> str:
+        """
+        Free-form chat turn, used during negotiation exchanges. Pass
+        strict_format=True only when the reply must itself contain a
+        parseable [[N]] answer (e.g. the negotiation final-answer turn) --
+        mid-negotiation turns should stay conversational.
+        """
+        messages = []
+        if strict_format:
+            messages.append({"role": "system", "content": _STRICT_FORMAT_SYSTEM_MESSAGE})
+        messages.append({"role": "user", "content": prompt})
+        return self._call_raw(messages)
