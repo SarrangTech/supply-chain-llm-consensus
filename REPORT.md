@@ -5,6 +5,12 @@ LLMs in the supply chain: towards autonomous multi-agent consensus-seeking,"
 *International Journal of Production Research*, DOI 10.1080/00207543.2025.2604311
 (arXiv:2411.10184).
 
+**This is the short version.** For a full chronological, step-by-step
+account of every action taken and the rationale behind it, see
+[FULL_SESSION_LOG.md](FULL_SESSION_LOG.md). For the focused list of
+paper-specific deviations and judgment calls (without the narrative), see
+[NOTES_AND_ASSUMPTIONS.md](NOTES_AND_ASSUMPTIONS.md).
+
 ## 1. Executive summary
 
 The full codebase replicating the paper's methodology is built, tested, and
