@@ -20,7 +20,7 @@ from .baselines import (
     eoq_tool_only_decision,
     ss_policy_decision,
 )
-from .config import FIXED_PARAMS, MODELS
+from .config import BACKENDS, FIXED_PARAMS, MODELS, OLLAMA_MODELS
 from .demand import MJDParams, generate_mjd_demand
 from .environment import SequentialSupplyChainEnv
 from .frameworks.info_sharing import make_info_sharing_decision_fn
@@ -67,16 +67,31 @@ def _chen_2000_decision_fn(env) -> list[int]:
 
 
 def make_client_factory(use_mock: bool):
+    """
+    Routes each model tier to whichever backend config.BACKENDS says it
+    should use right now (see the comment there for why "small" runs
+    locally via Ollama while "large" stays on OpenRouter).
+    """
     if use_mock:
         from .mock_llm import MockLLMClient
 
         def factory(model_tier: str):
             return MockLLMClient(model=MODELS[model_tier], bias=1.0 if model_tier == "small" else 1.05)
-    else:
-        from .llm_client import LLMClient
 
-        def factory(model_tier: str):
+        return factory
+
+    def factory(model_tier: str):
+        backend = BACKENDS[model_tier]
+        if backend == "ollama":
+            from .llm_client import OllamaClient
+
+            return OllamaClient(model=OLLAMA_MODELS[model_tier])
+        elif backend == "openrouter":
+            from .llm_client import LLMClient
+
             return LLMClient(model=MODELS[model_tier])
+        else:
+            raise ValueError(f"Unknown backend for tier {model_tier!r}: {backend!r}")
 
     return factory
 

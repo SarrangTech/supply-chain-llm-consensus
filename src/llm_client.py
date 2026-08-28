@@ -1,25 +1,32 @@
 """
-Thin client around OpenRouter's OpenAI-compatible chat completions endpoint.
+Chat-completion clients: OpenRouter (hosted, paid) and Ollama (local, free).
 
 DEVIATION FROM THE PAPER: the paper calls the Gemini API directly. Per the
-user's explicit choice (no Gemini access in this environment), this client
-targets OpenRouter instead, serving Llama 3.1 8B / 70B Instruct as analogs
-of Gemini 1.5 Flash / Pro (see config.py for the exact mapping and the
-caveats around it).
+user's explicit choices (no Gemini access; then, while waiting on more
+compute for the 70B/"large" tier, running the 8B/"small" tier locally via
+Ollama instead of paying for it), this codebase can run either backend for
+either tier -- see config.py for the model/backend mapping and its caveats.
 
 Retry behaviour mirrors the paper's stated reasoning (Section 5.2): "the
 small degree of randomness [temperature=0.1] allows for agents to repeat
 queries which returned an incorrectly-formatted output from the LLM, and to
 deliver results in the correct format in subsequent iterations." We
 implement that literally: on a malformed/unparseable response, re-query
-(same prompt, same non-zero temperature) up to MAX_RETRIES times.
+(same prompt, same non-zero temperature) up to MAX_RETRIES times. This
+retry/parsing logic is shared by both backends via BaseChatClient, so
+switching backends never changes behaviour around malformed output.
 """
 import os
 import re
 
 import requests
 
-from .config import FIXED_PARAMS, OPENROUTER_API_KEY_ENV_VAR, OPENROUTER_BASE_URL
+from .config import (
+    FIXED_PARAMS,
+    OLLAMA_BASE_URL,
+    OPENROUTER_API_KEY_ENV_VAR,
+    OPENROUTER_BASE_URL,
+)
 
 MAX_RETRIES = 3
 ORDER_PATTERN = re.compile(r"\[\[\s*(-?\d+(?:\.\d+)?)\s*\]\]")
@@ -46,34 +53,14 @@ class MalformedOutputError(Exception):
     pass
 
 
-class LLMClient:
-    def __init__(self, model: str, api_key: str | None = None):
-        self.model = model
-        self.api_key = api_key or os.environ.get(OPENROUTER_API_KEY_ENV_VAR)
-        if not self.api_key:
-            raise RuntimeError(
-                f"No API key found. Set the {OPENROUTER_API_KEY_ENV_VAR} environment "
-                "variable, or pass api_key= explicitly."
-            )
+class BaseChatClient:
+    """
+    Shared retry/parsing logic. Subclasses only need to implement
+    `_call_raw(messages) -> str`.
+    """
 
     def _call_raw(self, messages: list[dict]) -> str:
-        resp = requests.post(
-            f"{OPENROUTER_BASE_URL}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": self.model,
-                "messages": messages,
-                "temperature": FIXED_PARAMS["temperature"],
-                "max_tokens": FIXED_PARAMS["max_output_tokens"],
-            },
-            timeout=60,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        raise NotImplementedError
 
     def get_order_decision(self, prompt: str, max_order: int = FIXED_PARAMS["max_order_amount"]) -> int:
         """
@@ -116,3 +103,65 @@ class LLMClient:
             messages.append({"role": "system", "content": _STRICT_FORMAT_SYSTEM_MESSAGE})
         messages.append({"role": "user", "content": prompt})
         return self._call_raw(messages)
+
+
+class LLMClient(BaseChatClient):
+    """OpenRouter-backed client (hosted, paid per token)."""
+
+    def __init__(self, model: str, api_key: str | None = None):
+        self.model = model
+        self.api_key = api_key or os.environ.get(OPENROUTER_API_KEY_ENV_VAR)
+        if not self.api_key:
+            raise RuntimeError(
+                f"No API key found. Set the {OPENROUTER_API_KEY_ENV_VAR} environment "
+                "variable, or pass api_key= explicitly."
+            )
+
+    def _call_raw(self, messages: list[dict]) -> str:
+        resp = requests.post(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self.model,
+                "messages": messages,
+                "temperature": FIXED_PARAMS["temperature"],
+                "max_tokens": FIXED_PARAMS["max_output_tokens"],
+            },
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+
+
+class OllamaClient(BaseChatClient):
+    """
+    Local-inference client via Ollama's REST API (http://localhost:11434).
+    Zero marginal cost per call; speed/feasibility depends entirely on local
+    hardware (see NOTES_AND_ASSUMPTIONS.md -- this is why only the 8B/"small"
+    tier runs this way for now, not the 70B/"large" tier).
+    """
+
+    def __init__(self, model: str):
+        self.model = model
+
+    def _call_raw(self, messages: list[dict]) -> str:
+        resp = requests.post(
+            f"{OLLAMA_BASE_URL}/api/chat",
+            json={
+                "model": self.model,
+                "messages": messages,
+                "stream": False,
+                "options": {
+                    "temperature": FIXED_PARAMS["temperature"],
+                    "num_predict": FIXED_PARAMS["max_output_tokens"],
+                },
+            },
+            timeout=180,  # local CPU inference can be slower than a hosted API
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["message"]["content"]

@@ -23,6 +23,28 @@ from-scratch reconstruction of the paper's stated methodology.
 
 ## (b) Explicit deviation from the paper (user-approved)
 
+**Update, 2026-08-26**: while waiting for more compute from the user's
+university (needed for the 70B/"large" tier -- see hardware check in
+`REPORT.md`/`FULL_SESSION_LOG.md` Phase 18), the "small"/8B tier now runs
+**locally via Ollama** instead of OpenRouter, at the user's request. This is
+free and fits this machine's 15.6GB RAM. The routing is controlled entirely
+by `config.BACKENDS` (`{"small": "ollama", "large": "openrouter"}`) --
+nothing else in the codebase needs to know or care which backend a given
+tier uses, `src/llm_client.py`'s `LLMClient` (OpenRouter) and `OllamaClient`
+(local) share the same retry/parsing logic via a `BaseChatClient` base
+class.
+
+One new, real finding from this: **the negotiation framework is
+dramatically slower on local CPU inference than on the hosted API** --
+roughly 13.5 hours per 200-step config locally vs. roughly 2.1 hours per
+config on OpenRouter (a ~6-7x slowdown), because negotiation's ~16
+sequential calls/step compound badly without a GPU behind them, whereas
+the other four frameworks are only mildly slower locally (roughly 1-2.5
+hours per 200-step config either way). This is a hardware/inference-speed
+finding, not a new methodological deviation -- the frameworks themselves
+are unchanged.
+
+
 **Models**: the paper uses Gemini 1.5 Flash and Gemini 1.5 Pro directly via
 Google's API. No Gemini/Google API key was available in this environment.
 Per explicit user instruction, this codebase instead uses **Llama 3.1 8B

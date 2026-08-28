@@ -34,20 +34,43 @@ SS_POLICY = {"S": 100, "s": 60}
 # DEVIATION FROM THE PAPER (explicit, user-approved):
 # The paper uses Gemini 1.5 Flash / Gemini 1.5 Pro. No Gemini API key is
 # available in this environment, and the user asked to substitute open-source
-# models served via OpenRouter instead: Llama 3.1 8B Instruct standing in for
-# the "small/fast" model, and Llama 3.1 70B Instruct standing in for the
-# "large/capable" model. This is a like-for-like size-tier substitution
-# within one model family, matching the paper's Flash-vs-Pro comparison
-# *structurally*, but the numbers this produces are NOT the paper's numbers
-# and are not claimed to be. See NOTES_AND_ASSUMPTIONS.md.
+# models instead: Llama 3.1 8B Instruct standing in for the "small/fast"
+# model, and Llama 3.1 70B Instruct standing in for the "large/capable"
+# model. This is a like-for-like size-tier substitution within one model
+# family, matching the paper's Flash-vs-Pro comparison *structurally*, but
+# the numbers this produces are NOT the paper's numbers and are not claimed
+# to be. See NOTES_AND_ASSUMPTIONS.md.
+#
+# FURTHER DEVIATION (2026-08-26, explicit, user-approved): the 70B/"large"
+# tier needs ~40GB+ RAM even quantized, which this machine's 15.6GB doesn't
+# have -- it's a hard capacity ceiling, not a speed problem (see
+# NOTES_AND_ASSUMPTIONS.md and REPORT.md for the full hardware check). While
+# waiting on more compute from the user's university, the "small" tier runs
+# LOCALLY via Ollama (free, no rate limits, no API key needed), and the
+# "large" tier stays routed to OpenRouter (paid, blocked on account credit)
+# until bigger hardware is available. BACKENDS below is the single place
+# that controls this routing -- flip a tier's entry here once circumstances
+# change, nothing else needs to know.
 # ---------------------------------------------------------------------------
 MODELS = {
-    "small": "meta-llama/llama-3.1-8b-instruct",   # analog of Gemini 1.5 Flash
-    "large": "meta-llama/llama-3.1-70b-instruct",  # analog of Gemini 1.5 Pro
+    "small": "meta-llama/llama-3.1-8b-instruct",   # analog of Gemini 1.5 Flash (OpenRouter id)
+    "large": "meta-llama/llama-3.1-70b-instruct",  # analog of Gemini 1.5 Pro (OpenRouter id)
+}
+
+# Ollama uses different model-name strings than OpenRouter for the same
+# underlying weights.
+OLLAMA_MODELS = {
+    "small": "llama3.1:8b",
+}
+
+BACKENDS = {
+    "small": "ollama",       # local, free -- feasible on this machine's 15.6GB RAM
+    "large": "openrouter",   # hosted, paid -- 70B cannot be loaded locally here
 }
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_API_KEY_ENV_VAR = "OPENROUTER_API_KEY"
+OLLAMA_BASE_URL = "http://localhost:11434"
 
 METRICS = ("global_cost", "global_bullwhip")
 

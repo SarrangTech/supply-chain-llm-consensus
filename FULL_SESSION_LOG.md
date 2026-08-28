@@ -634,13 +634,86 @@ Before writing or committing anything:
 
 ---
 
-## Phase 20 — This document
+## Phase 20 — Writing this document
 
 You said the report wasn't comprehensive enough and asked for every step
-with rationale. This file is that full account, phase by phase, in the
-order it actually happened. `REPORT.md` remains the shorter
-executive-summary-plus-decision-table version for quick reference;
+with rationale. This file (up to this point) was that full account, phase
+by phase, in the order it actually happened. `REPORT.md` remains the
+shorter executive-summary-plus-decision-table version for quick reference;
 `NOTES_AND_ASSUMPTIONS.md` remains the focused list of paper-specific
 deviations and judgment calls (agent indexing, simulation ordering, the
 Chen et al. baseline's exact formula, etc.) without the full narrative.
 This file is the connective narrative across all three.
+
+---
+
+## Phase 21 — Local Ollama for the small tier (2026-08-26)
+
+You asked to run the small model locally via Ollama while waiting for the
+university to provide more compute for the large tier. Steps taken:
+
+- Rechecked free disk space (~25.8GB free by this point, down from ~43.5GB
+  earlier in the session due to unrelated activity on the machine) —
+  still comfortably enough for an ~5GB model.
+- Installed Ollama non-interactively via `winget install --id Ollama.Ollama
+  --silent`, run in the background since the download/install took longer
+  than a few minutes.
+- Verified the install by locating `ollama.exe` directly
+  (`C:\Users\batha\AppData\Local\Programs\Ollama\`) after discovering the
+  new PATH entry hadn't propagated to the current shell session yet —
+  used the full binary path rather than waiting on a shell restart.
+- Pulled `llama3.1:8b` (~4.9GB), run in the background.
+- **Refactored `src/llm_client.py`** rather than writing a second,
+  duplicate client: extracted the shared retry/malformed-output-parsing
+  logic (which must behave identically regardless of backend) into a
+  `BaseChatClient` base class, then made both `LLMClient` (OpenRouter) and
+  a new `OllamaClient` (local, talks to `http://localhost:11434/api/chat`)
+  thin subclasses that only implement `_call_raw()`. This avoids having
+  two copies of the retry logic drift apart over time.
+- **Updated `src/config.py`** to add a `BACKENDS` dict (`{"small":
+  "ollama", "large": "openrouter"}`) as the single place controlling which
+  tier uses which backend, plus `OLLAMA_MODELS` (Ollama's model-name
+  strings differ from OpenRouter's) and `OLLAMA_BASE_URL`. Documented this
+  as a further, dated deviation on top of the existing model-substitution
+  note, rather than editing the original note in place and losing the
+  history of *when* this changed.
+- **Updated `experiment_runner.py`'s `make_client_factory`** to read
+  `BACKENDS` and instantiate the right client per tier.
+- **Fixed a real CLI bug this change surfaced**: `run_experiments.py` was
+  unconditionally requiring `OPENROUTER_API_KEY` for any non-mock run, even
+  though a small-tier-only shard now needs no API key at all (it's fully
+  local). Reordered the CLI so the grid is built and filtered *first*,
+  then the API-key check only fires if the resulting (possibly filtered)
+  grid actually contains a config routed to OpenRouter.
+- **Smoke-tested the new Ollama backend for real** (2 steps, all 10
+  small-tier LLM configs plus baselines, no API key set) before trusting
+  it — completed cleanly, exit code 0.
+- **Found a real, reportable timing result from that smoke test**: four of
+  the five frameworks extrapolate to a reasonable ~1-2.5 hours per 200-step
+  config locally, but negotiation extrapolates to ~13.5 hours per config
+  (~27 hours for both metrics combined) — a ~6-7x slowdown versus the
+  hosted API's ~2.1 hours per config, because negotiation's heavy
+  sequential-call structure has nowhere to go but through a single CPU
+  without a GPU behind it. Reported this precisely (with the per-framework
+  breakdown table) rather than a single blended "it's slow" estimate,
+  and asked how you wanted to handle negotiation specifically given that
+  gap. **You chose to run it locally anyway and accept ~27 hours in the
+  background.**
+- Before launching the long run, flagged a practical caveat: since this
+  now runs on local CPU rather than a hosted API, the laptop needs to
+  stay awake for the run to keep progressing (a hosted-API run never had
+  this constraint).
+- **Sequenced the run to surface results sooner**: rather than run the
+  full small-tier grid in its default order (which interleaves a slow
+  negotiation config in the middle before the last metric's fast
+  frameworks even start), launched the four fast frameworks (both metrics)
+  as one shard first (~15h), planning to run negotiation (both metrics)
+  as a second shard afterward (~27h) — considered running them
+  concurrently instead, but rejected that: unlike the hosted API (where
+  OpenRouter has independent server capacity per request), local
+  inference through one Ollama process on one CPU doesn't actually
+  parallelize throughput across concurrent requests, so running shards
+  "in parallel" locally would mostly just add contention rather than save
+  wall-clock time.
+- Updated `NOTES_AND_ASSUMPTIONS.md` with a dated addendum describing this
+  change and the negotiation timing finding.

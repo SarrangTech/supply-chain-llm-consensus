@@ -60,15 +60,6 @@ def main():
         print(f"Merged {len(results)} result(s) into {args.out}")
         return
 
-    if not args.mock and not os.environ.get(cfg.OPENROUTER_API_KEY_ENV_VAR):
-        print(
-            f"ERROR: {cfg.OPENROUTER_API_KEY_ENV_VAR} is not set, and --mock was not passed.\n"
-            "Either set the API key (real run, incurs API cost) or pass --mock (free pipeline validation only, "
-            "results are not meaningful).",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
     if args.steps is not None:
         cfg.FIXED_PARAMS["num_steps"] = args.steps
         print(f"NOTE: overriding num_steps to {args.steps} for a pilot run (paper uses 200).")
@@ -83,6 +74,23 @@ def main():
     )
     if not grid:
         print("ERROR: filters produced an empty config grid.", file=sys.stderr)
+        sys.exit(1)
+
+    # Only require an OpenRouter key if this specific (possibly filtered/
+    # sharded) grid actually contains a config whose model tier is routed
+    # to OpenRouter (see config.BACKENDS) -- e.g. a small-tier-only shard
+    # running entirely on local Ollama needs no key at all.
+    needs_openrouter = any(
+        "framework" in c and cfg.BACKENDS.get(c["model_tier"]) == "openrouter"
+        for c in grid
+    )
+    if not args.mock and needs_openrouter and not os.environ.get(cfg.OPENROUTER_API_KEY_ENV_VAR):
+        print(
+            f"ERROR: this grid includes OpenRouter-backed configs, but {cfg.OPENROUTER_API_KEY_ENV_VAR} "
+            "is not set.\nEither set the API key, or filter it out (e.g. --only-model-tier small if that's "
+            "routed to Ollama), or pass --mock.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
