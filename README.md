@@ -20,7 +20,10 @@ replaced the earlier OpenRouter-for-70B / local-Ollama-for-8B split.
 Section (f) of NOTES_AND_ASSUMPTIONS.md has the full writeup: a real proxy
 misconfiguration, a thread-oversubscription bug, an AVX512-vs-no-AVX512
 30x throughput gap, and the resulting node-selection rules baked into
-`llm_client.py` and `config.py`.
+`llm_client.py` and `config.py`. **[EVIDENCE.md](EVIDENCE.md)** has the raw,
+independently-checkable proof this actually ran on the cluster (SLURM
+accounting records, GPU hardware UUIDs, model-loader confirmation of which
+weights loaded) rather than just a narrative describing it.
 
 ## Layout
 
