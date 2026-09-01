@@ -1,0 +1,33 @@
+[
+  {
+    "config": {
+      "metric": "cost",
+      "baseline": "ss_policy",
+      "label": "Restocking Policy (S,s)=(100,60)"
+    },
+    "cost": 13403.0,
+    "bullwhip": 4.123293301905158,
+    "elapsed_sec": 0.0005371570587158203
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "baseline": "tool_only",
+      "label": "Demand Forecasting Tool"
+    },
+    "cost": 803.0,
+    "bullwhip": 0.1498148277065144,
+    "elapsed_sec": 0.00048804283142089844
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "negotiation_tool",
+      "model_tier": "large",
+      "label": "negotiation_tool / large"
+    },
+    "cost": 1580.0,
+    "bullwhip": 0.29936147334265234,
+    "elapsed_sec": 1128.9715666770935
+  }
+]

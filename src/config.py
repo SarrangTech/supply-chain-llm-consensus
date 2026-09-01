@@ -6,6 +6,7 @@ Every value in FIXED_PARAMS is stated explicitly in the paper. Everything else
 in this file (model IDs, MJD demand parameters) is a deviation or an inference
 and is flagged inline and in NOTES_AND_ASSUMPTIONS.md.
 """
+import os
 
 # ---------------------------------------------------------------------------
 # Appendix 6, Table 2 -- stated exactly in the paper.
@@ -61,16 +62,35 @@ MODELS = {
 # underlying weights.
 OLLAMA_MODELS = {
     "small": "llama3.1:8b",
+    "large": "llama3.1:70b",
 }
 
+# FURTHER DEVIATION (2026-08-30, explicit, user-approved): moved from the
+# laptop above to the user's university HPC cluster (SLURM), which has both
+# real GPUs (V100/A100/H200) and, importantly, CPU nodes with AVX512/VNNI
+# (Cascade Lake / Skylake-AVX512) -- measured 8B throughput went from
+# 0.39 tok/s (Zen2 CPU node, no AVX512) to 12.34 tok/s (Cascade Lake) to
+# ~11.5 tok/s (V100 GPU, Vulkan-fallback since this cluster's driver is too
+# old for Ollama's CUDA path). 70B was measured at ~0.04 tok/s on CPU (not
+# viable -- a single 90-token reply would take ~37 minutes) vs. full CUDA
+# GPU offload on H200 (fast, 100% GPU). Both tiers now route to Ollama:
+# "small" preferentially to abundant AVX512 CPU nodes (no GPU queue wait,
+# 2-day walltime), "large" to GPU nodes only (CPU is a non-starter for 70B).
 BACKENDS = {
-    "small": "ollama",       # local, free -- feasible on this machine's 15.6GB RAM
-    "large": "openrouter",   # hosted, paid -- 70B cannot be loaded locally here
+    "small": "ollama",
+    "large": "ollama",
 }
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_API_KEY_ENV_VAR = "OPENROUTER_API_KEY"
-OLLAMA_BASE_URL = "http://localhost:11434"
+# Overridable via env var so multiple SLURM jobs sharing one physical GPU
+# node (each requesting a single GPU out of the node's several) can each run
+# their own `ollama serve` on a distinct port instead of colliding on the
+# default 11434 -- see NOTES_AND_ASSUMPTIONS.md section (f) for the port-
+# collision incident this fixes (two co-located jobs silently shared one
+# Ollama instance; one lost its results when the other job finished and
+# killed the process it didn't know it depended on).
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 METRICS = ("global_cost", "global_bullwhip")
 

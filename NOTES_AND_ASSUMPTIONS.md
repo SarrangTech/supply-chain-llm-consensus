@@ -169,16 +169,242 @@ oversight.
   (b)/(d); `info_sharing -> {initiate <-> respond} x 3 -> final_decision ->
   summarise` for framework (e).
 
+## (f) Migration to HPC (explorer.northeastern.edu), 2026-08-29/30
+
+Compute moved from the user's laptop to Northeastern's Discovery cluster
+("Explorer"), reached via SSH as `explorer-login` (login node, itself named
+`explorer-02`) with SLURM for job scheduling. This section documents what
+was found and changed; it supersedes the "waiting for more compute"
+framing in section (b) above -- the wait is over, both tiers now run free
+and local, and (b) is left as-is for the historical record of *why* Ollama
+was introduced in the first place.
+
+**Environment setup.** System Python (3.9) had no `pip`; bootstrapped via
+`ensurepip`, then built a venv against the cluster's newer `module load
+python/3.13.5` instead. Ollama has no system-wide install available
+(installer needs root, which isn't available here) -- used the portable
+tarball instead (`ollama-linux-amd64.tar.zst`, requires `zstd`; note
+Ollama switched from `.tgz` to `.tar.zst` at some point after older
+install instructions were written, so a plain `curl | tar -xz` silently
+downloads an HTML 404 page and fails opaquely -- fetch the real asset URL
+from `api.github.com/repos/ollama/ollama/releases/latest` instead). Runs
+as a plain foreground process (`ollama serve &` inside the SLURM job
+script), no daemon/systemd needed.
+
+**Proxy bug (real, non-obvious, cost the most debugging time).** Compute
+nodes have `http_proxy`/`https_proxy` set campus-wide with no `no_proxy`
+exemption for `localhost` -- so Ollama's own client-server traffic on
+`127.0.0.1:11434` was getting silently routed through the campus Squid
+proxy and rejected ("Access Denied"), even though client and server are
+the same process' loopback call. Fix: export `no_proxy`/`NO_PROXY`
+including `localhost,127.0.0.1` in every job script before starting
+`ollama serve`.
+
+**GPU driver ceiling.** Ollama's CUDA path requires driver >= 550. Several
+older GPU nodes (e.g. V100-SXM2 nodes, driver 545) fall below that and
+Ollama silently falls back to a Vulkan compute backend instead -- still
+genuinely GPU-accelerated (confirmed via `ollama ps` showing `100% GPU`),
+just not the CUDA path. Newer nodes (H200, driver 595+) use real CUDA.
+Don't assume Vulkan fallback = broken; check `ollama ps`'s PROCESSOR column
+and the "NVIDIA driver too old" log line, not just whether it runs.
+
+**Thread-oversubscription bug (the actual root cause of "CPU is too
+slow").** Ollama/llama.cpp auto-sizes its thread pool to the node's full
+logical CPU count (`nproc`, i.e. including SMT/hyperthreads) by default --
+it has no awareness of SLURM's cgroup-based core allocation for the job.
+Requesting `--cpus-per-task=48` on a 128-thread node still spawned 128
+llama.cpp threads, all fighting over the 48 cores the cgroup actually
+grants, causing severe barrier-contention stalls in llama.cpp's per-layer
+thread synchronization. Measured effect on 8B: **0.02-0.39 tok/s** with
+default threading vs **12.34 tok/s** once the request explicitly pinned
+`num_thread` to the job's real core count. This is now fixed in code, not
+just in ad-hoc test scripts -- see `llm_client.py`'s `_NUM_THREAD` (reads
+`SLURM_CPUS_PER_TASK`, falls back to `os.cpu_count()`) and its use in
+`OllamaClient._call_raw`'s `options.num_thread`. There is no such thing as
+an `OLLAMA_NUM_THREADS` environment variable (an earlier test script
+assumed one; it's silently ignored) -- thread count is a per-request API
+option, not an env var.
+
+**CPU instruction-set gap (bigger effect than thread count alone).**
+AVX512 support matters enormously for llama.cpp's quantized matmuls. Same
+8B model, same (correct) thread pinning:
+
+| Node CPU | ISA | tok/s (8B, sustained) |
+|---|---|---|
+| AMD EPYC 7702 (Zen 2) | AVX2 only | 0.39 |
+| Intel Cascade Lake (Xeon) | AVX512 + VNNI | 12.34 |
+
+SLURM exposes CPU generation as node features (`sinfo -N -o "%N %f"`);
+target AVX512-capable nodes explicitly via `--constraint=cascadelake` (or
+`skylake_avx512` / `sapphirerapids`) rather than letting the scheduler pick
+any CPU node in the partition.
+
+**70B does not work on CPU, full stop.** Even on an AVX512 Cascade Lake
+node with correct thread pinning: **~0.04 tok/s (~25 sec/token)** -- a
+single 90-token reply would take ~37 minutes, and a full negotiation
+config (~3200 calls) would take on the order of 100+ days. This is a hard
+memory-bandwidth wall (70B's ~40GB of quantized weights have to stream
+through memory once per generated token), not something thread/ISA tuning
+fixes. 70B needs GPU. Confirmed working there: H200 (143GB VRAM), full
+81/81-layer CUDA offload, `ollama ps` reports `100% GPU`.
+
+**Context-size bloat.** Ollama defaults `num_ctx` to the model's full
+trained context (131072 for Llama 3.1) when unset, which on the 70B/H200
+test allocated a ~40GB KV cache and made the very first prompt eval take
+19 seconds for 17 tokens. Our prompts are short (well under 4096 tokens);
+`OllamaClient` now explicitly caps `num_ctx=4096` on every call to avoid
+this on every backend, not just GPU.
+
+**Resulting backend decision (`config.BACKENDS`, both updated to
+`"ollama"`):** "small" (8B) runs preferentially on abundant AVX512 CPU
+nodes in the `short` partition (2-day walltime, no GPU queue contention,
+~40+ such nodes) but works fine on GPU too if one's free. "large" (70B)
+is GPU-only (`gpu` partition, 8h walltime cap, or `sharing`, 1h cap) --
+CPU is not an option for this tier at all, per the measurement above.
+
+**Resolved (2026-08-31):** does a full 200-step negotiation_tool/large
+config finish within the `gpu` partition's 8-hour cap? Yes, comfortably.
+A real `--steps 20` pilot (`negotiation_tool` x `large` x `cost`, on an
+H200 via the `gpu` partition, job 9835369) completed in **671.9s**.
+Per-step call count is fixed regardless of total step count, so this
+scales ~linearly to **~1.9 hours** for the full 200 steps -- against an
+8h cap, no checkpoint/resume or OpenRouter fallback needed for this
+combination after all. The earlier worry was based on isolated single-call
+cold-start latency (misleadingly slow); real sustained per-call time on
+H200 was ~2.2s once warmed up, i.e. the bottleneck was never GPU throughput.
+
+**Port-collision bug found during the 20-shard pilot grid (2026-08-31).**
+Submitted 8 large-tier (GPU) shards concurrently, each requesting a single
+GPU via `--gres=gpu:h200:1`. SLURM's `gpu` partition nodes have 8 H200s
+each, so multiple of our jobs can (and did) land on the *same physical
+node* -- confirmed via `sacct -o NodeList`: jobs 9836200/9836202 both ran
+on `d4052` starting at the identical second, and separately
+9836370/9836378 also both on `d4052`. Every job script hardcoded `ollama
+serve` on the default port 11434; when two of our jobs share a node, one
+binds the port and the other's `ollama serve` silently fails to bind
+(already in use) -- its client then unknowingly piggybacks on the
+sibling's server for the rest of the run. This is invisible right up until
+the owning job finishes first and kills "its" server: the piggybacking job
+then gets `Connection refused` mid-run (exactly what killed
+`info_sharing`/large/cost, job 9836200 -- real, unrecoverable data loss for
+that shard) or, if it finishes before its sibling does, completes with
+fully valid results but still exits non-zero (the script's final `kill
+$SERVER_PID` fails against a PID that was never actually its own server),
+which SLURM then reports as FAILED even though the results are good (job
+9836378, `negotiation_tool`/large/bullwhip -- verified: full result tables
+present in both the log and `results/pilot_negotiation_tool_large_bullwhip.json`).
+Net effect across 8 concurrent GPU shards: 1 genuine loss, 1 cosmetic
+false-failure, 6 unaffected by luck of timing. Not survivable at full
+200-step scale (longer overlap windows, more concurrent shards). Fixed by
+making `OLLAMA_BASE_URL` overridable via env var (`config.py`) so each
+SLURM job script picks a port derived from `$SLURM_JOB_ID` and exports
+`OLLAMA_HOST`/`OLLAMA_BASE_URL` to match, plus guarding the cleanup
+(`kill $SERVER_PID 2>/dev/null || true`) so a piggybacking job's harmless
+kill failure no longer flips its exit status.
+
+**Noisy-neighbor CPU contention (2026-08-31, second bug found the same
+day).** Two of the ten small-tier (CPU) pilot shards
+(`standalone_tool`/bullwhip, `info_sharing_tool`/cost) silently ran ~20x
+slower than their siblings and hit the 45-minute job time limit with no
+results saved, while shards using the identical framework/model on
+different nodes finished in ~2 minutes. Checked the slow node's own log
+first in case it was a hardware/driver difference: `system_info` still
+reported `AVX512 = 1, AVX512_VNNI = 1` -- same capability as the healthy
+nodes. So the CPU generation wasn't the problem; the shared/non-exclusive
+`short` partition let other users' unrelated jobs land on the same
+physical node and contend for the same physical cores our job's 56 pinned
+threads were relying on (SLURM's default scheduling counts logical, not
+physical, cores, so a "fully allocated" node on paper can still be
+oversubscribed underneath). Fix: added `--exclusive` to small-tier job
+submissions (`submit_shard.sh`) so the whole node is reserved for us,
+trading a possibly-longer queue wait for guaranteed throughput. Confirmed
+fixed: rerunning both affected shards with `--exclusive` completed in
+2m09s and 2m44s respectively -- back in line with every other small-tier
+shard.
+
+**20-shard pilot grid, full results (steps=20, pipeline validation only --
+NOT meaningful numbers, see the 200-step requirement in FIXED_PARAMS).**
+All 5 frameworks x 2 model tiers x 2 metrics, run for real against local
+Ollama backends on the cluster (no mocks, no OpenRouter). Two shards
+needed a rerun after the bugs above were fixed (`info_sharing`/large/cost:
+port collision: SLURM job 9836200 -> rerun 9851695; `standalone_tool`/
+small/bullwhip and `info_sharing_tool`/small/cost: noisy neighbor: SLURM
+jobs 9836205, 9836207 -> reruns 9852815, 9852816). Full job-ID provenance
+is in `pilot_job_ids.txt`; raw output in `results/pilot_*.json`.
+
+```
+framework           tier   metric          cost    bullwhip elapsed_s
+info_sharing        large  bullwhip       978.0     0.01650     177.5
+info_sharing        large  cost          1800.0     0.00629      44.6
+info_sharing        small  bullwhip      3313.0     0.18819     149.3
+info_sharing        small  cost         13190.0     0.05023     151.0
+info_sharing_tool   large  bullwhip      1185.0     0.06536      49.3
+info_sharing_tool   large  cost          1517.0     0.16660      46.7
+info_sharing_tool   small  bullwhip      9027.0     0.22062     198.6
+info_sharing_tool   small  cost         15107.0     0.03143     152.2
+negotiation_tool    large  bullwhip      8036.0     0.83492    1128.8
+negotiation_tool    large  cost          1580.0     0.29936    1129.0
+negotiation_tool    small  bullwhip      2300.0     3.45330    1742.8
+negotiation_tool    small  cost          5265.0     0.74875    1755.1
+standalone          large  bullwhip      1096.0     0.01279     180.2
+standalone          large  cost          1425.0     0.01555     155.5
+standalone          small  bullwhip      6536.0     0.15820     122.9
+standalone          small  cost         10769.0     0.03544     127.5
+standalone_tool     large  bullwhip      1003.0     0.12002      38.9
+standalone_tool     large  cost          1607.0     0.22431      37.7
+standalone_tool     small  bullwhip      3175.0     3.48097     117.1
+standalone_tool     small  cost         12377.0     0.04715     131.2
+```
+
+Do not read anything into the specific cost/bullwhip values above --
+20 steps is a pipeline smoke test, not the paper's 200-step spec, and
+several rows (e.g. `negotiation_tool`/small/bullwhip at 3.45) show the
+kind of instability a short warm-up window produces. The only claims this
+table supports are: every framework/tier/metric combination runs to
+completion against real local backends, and elapsed time per shard is
+consistent with the throughput numbers measured earlier in this section.
+
+**Sharding across the cluster.** `run_experiments.py` already supports
+`--only-framework` / `--only-metric` / `--only-model-tier` plus `--merge`
+(see its docstring and `filter_grid()` in `experiment_runner.py`) -- no
+code changes were needed to parallelize. The 25-config grid decomposes
+into 20 independent LLM-driven runs (5 frameworks x 2 tiers x 2 metrics,
+each metric a fully independent 200-step simulation, not just a different
+scoring of shared data) plus 5 fast non-LLM baselines. Each of the 20 can
+be submitted as its own SLURM job against whichever node type suits its
+tier, running in parallel rather than the ~13.5h/config sequential
+estimate from section (b) compounding across the whole grid.
+
 ## How to actually run this
 
+Locally (laptop, small-scale validation only):
 ```
 pip install -r requirements.txt
 
 # Free pipeline validation only -- NOT meaningful results:
 python run_experiments.py --mock --steps 20
+```
 
-# Real run (costs money, calls OpenRouter):
+On the HPC cluster (real runs, both tiers free/local via Ollama -- see
+section (f) for the SLURM job-script patterns: proxy env vars, thread
+pinning, AVX512 node constraints, one shard per SLURM job):
+```
+# small tier, one framework/metric shard, on an AVX512 CPU node (short partition):
+python run_experiments.py --only-framework negotiation_tool --only-metric cost \
+    --only-model-tier small --out results/shard_neg_cost_small.json
+
+# large tier, same shard shape, on a GPU node (gpu/sharing partition):
+python run_experiments.py --only-framework negotiation_tool --only-metric cost \
+    --only-model-tier large --out results/shard_neg_cost_large.json
+
+# after all shards finish, merge into one results file + table:
+python run_experiments.py --merge "results/shard_*.json" --out results/results.json
+```
+
+Real run via OpenRouter instead (paid; only still relevant if a specific
+shard is deliberately kept off local Ollama, e.g. per the open question
+above):
+```
 export OPENROUTER_API_KEY=sk-...
-python run_experiments.py            # full 200-step x 25-config grid
 python run_experiments.py --steps 20 # short pilot first, recommended
 ```

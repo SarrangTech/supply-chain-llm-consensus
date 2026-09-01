@@ -2,10 +2,11 @@
 Chat-completion clients: OpenRouter (hosted, paid) and Ollama (local, free).
 
 DEVIATION FROM THE PAPER: the paper calls the Gemini API directly. Per the
-user's explicit choices (no Gemini access; then, while waiting on more
-compute for the 70B/"large" tier, running the 8B/"small" tier locally via
-Ollama instead of paying for it), this codebase can run either backend for
-either tier -- see config.py for the model/backend mapping and its caveats.
+user's explicit choices (no Gemini access; now running on an HPC cluster,
+both model tiers run locally and for free via Ollama -- see
+NOTES_AND_ASSUMPTIONS.md section (f)), this codebase can run either
+backend for either tier -- see config.py for the model/backend mapping and
+its caveats.
 
 Retry behaviour mirrors the paper's stated reasoning (Section 5.2): "the
 small degree of randomness [temperature=0.1] allows for agents to repeat
@@ -20,6 +21,17 @@ import os
 import re
 
 import requests
+
+# Ollama spawns as many threads as the node's full logical CPU count by
+# default (llama.cpp's nproc-based auto-detect), which on a SLURM cluster
+# routinely exceeds the actual cgroup-limited core count for the job --
+# measured impact on explorer.northeastern.edu: 128 threads fighting over a
+# 48-core cgroup allocation dropped 8B CPU throughput to 0.02 tok/s (barrier
+# contention in llama.cpp's per-layer thread sync). Pinning num_thread to the
+# job's real allocation fixed it (12.34 tok/s on an AVX512 Cascade Lake
+# node). SLURM_CPUS_PER_TASK is unset outside a job (e.g. local dev), so
+# fall back to os.cpu_count().
+_NUM_THREAD = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1))
 
 from .config import (
     FIXED_PARAMS,
@@ -141,8 +153,9 @@ class OllamaClient(BaseChatClient):
     """
     Local-inference client via Ollama's REST API (http://localhost:11434).
     Zero marginal cost per call; speed/feasibility depends entirely on local
-    hardware (see NOTES_AND_ASSUMPTIONS.md -- this is why only the 8B/"small"
-    tier runs this way for now, not the 70B/"large" tier).
+    hardware -- both tiers run this way now (see NOTES_AND_ASSUMPTIONS.md
+    section (f) for the HPC node-selection rules this implies: the 70B/
+    "large" tier requires a GPU node, CPU is ~300x too slow for it).
     """
 
     def __init__(self, model: str):
@@ -158,9 +171,17 @@ class OllamaClient(BaseChatClient):
                 "options": {
                     "temperature": FIXED_PARAMS["temperature"],
                     "num_predict": FIXED_PARAMS["max_output_tokens"],
+                    "num_thread": _NUM_THREAD,
+                    # Ollama otherwise defaults num_ctx to the model's full
+                    # trained context (131072 for Llama 3.1), which on the
+                    # 70B/H200 test bloated the KV cache to ~40GB and made
+                    # the first prompt eval take 19s for 17 tokens. Our
+                    # prompts are short (well under 4096 tokens); capping
+                    # this avoids that cold-start cost on every backend.
+                    "num_ctx": 4096,
                 },
             },
-            timeout=180,  # local CPU inference can be slower than a hosted API
+            timeout=600,  # local CPU inference can be slower than a hosted API
         )
         resp.raise_for_status()
         data = resp.json()
