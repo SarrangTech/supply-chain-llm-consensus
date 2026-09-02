@@ -1,0 +1,43 @@
+[
+  {
+    "config": {
+      "metric": "bullwhip",
+      "baseline": "ss_policy",
+      "label": "Restocking Policy (S,s)=(100,60)"
+    },
+    "cost": 124450.0,
+    "bullwhip": 107.85888264960114,
+    "elapsed_sec": 0.004269838333129883
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "baseline": "tool_only",
+      "label": "EOQ tool"
+    },
+    "cost": 11883.0,
+    "bullwhip": 0.013723735303362083,
+    "elapsed_sec": 0.007976293563842773
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "baseline": "chen_2000",
+      "label": "Chen et al. (2000)"
+    },
+    "cost": 3842.0,
+    "bullwhip": 1.1214243957256804,
+    "elapsed_sec": 0.0046803951263427734
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "info_sharing_tool",
+      "model_tier": "large",
+      "label": "info_sharing_tool / large"
+    },
+    "cost": 11532.0,
+    "bullwhip": 0.1443523724833055,
+    "elapsed_sec": 419.9861807823181
+  }
+]

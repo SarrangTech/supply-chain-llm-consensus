@@ -120,5 +120,15 @@ rules in `config.py`/`llm_client.py` are based on.
 
 The pipeline has also been validated end-to-end with `--mock` (all 25
 configurations run without error across both metrics and both model
-tiers). The full 200-step x 25-config grid (the paper's actual spec) has
-not been run yet.
+tiers).
+
+**Update (2026-09-02): the full 200-step x 25-config grid has now been run**
+for real on the cluster (all 20 LLM-driven shards in parallel, zero
+failures). Canonical merged results are in `results/results.json`; job-ID
+provenance in `full_job_ids.txt`. Two patterns in the real numbers are
+flagged as not-yet-diagnosed in NOTES_AND_ASSUMPTIONS.md section (g) --
+the 8B tier's cost-metric results are far worse than the non-LLM
+baselines, and `negotiation_tool`/large is the worst cost performer among
+70B configs, contrary to the paper's monotonic-improvement hypothesis --
+before treating this as a finished comparison against the paper's Table 1
+/ Table 2.

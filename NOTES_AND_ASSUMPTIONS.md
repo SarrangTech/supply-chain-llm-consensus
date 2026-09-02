@@ -375,6 +375,47 @@ be submitted as its own SLURM job against whichever node type suits its
 tier, running in parallel rather than the ~13.5h/config sequential
 estimate from section (b) compounding across the whole grid.
 
+## (g) Full 200-step, 25-configuration grid (2026-09-02) -- the paper's actual spec
+
+Ran for real using `submit_shard.sh`, all 20 LLM-driven shards in parallel
+across the cluster (job IDs in `full_job_ids.txt`), then merged and
+deduplicated (baselines are recomputed identically by every shard since
+they're deterministic given the fixed demand series, so duplicates were
+dropped: 70 raw rows -> 25 canonical rows in `results/results.json`, one
+row per Table 1 / Table 2 configuration).
+
+All 20 shards completed cleanly (`sacct` state `COMPLETED`, zero
+failures) -- the port-collision and noisy-neighbor fixes from section (f)
+held even though the scheduler packed all 10 GPU shards onto the same
+physical node (`d4052`) one after another. Elapsed times matched the
+scaled-up pilot estimates: `negotiation_tool`/small took 4h55m (estimate
+was ~4.8h), `negotiation_tool`/large took 1h34m (estimate was ~1.9h).
+
+**Two patterns in the real numbers worth flagging, not yet diagnosed:**
+
+1. The 8B ("small") tier's cost-metric results are enormous (over
+   1,000,000 in several configs, vs. 124,450 for the (S,s) baseline),
+   while the *bullwhip* values for those same configs are low (0.03-0.66).
+   Low bullwhip alongside catastrophic cost is consistent with the model
+   settling into ordering a large, roughly constant amount every step
+   (low order-to-order variance -> low bullwhip) instead of reasoning
+   about actual inventory need, accumulating holding-cost penalties over
+   200 steps instead of oscillating. Plausible, not confirmed -- would
+   need to inspect per-step order logs to verify.
+2. `negotiation_tool` + large (70B) is the *worst* cost performer among
+   all 70B configs (770,118, worse than standalone's 71,651 and both
+   tool-assisted variants' 20,038/32,552), which runs counter to the
+   paper's core hypothesis that more sophisticated coordination
+   monotonically improves outcomes. Could be a genuine finding about how
+   Llama 3.1 negotiates differently than Gemini, or an artifact of the
+   `MalformedOutputError` retry path being hit more often during
+   negotiation's longer multi-turn exchanges -- not yet distinguished.
+
+Do not treat either observation as a validated conclusion about framework
+quality -- they are flagged here as the next things worth investigating
+(starting with the retry/malformed-output logs for the affected shards)
+before drawing any comparison to the paper's Table 1 / Table 2 findings.
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):
