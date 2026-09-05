@@ -125,10 +125,18 @@ tiers).
 **Update (2026-09-02): the full 200-step x 25-config grid has now been run**
 for real on the cluster (all 20 LLM-driven shards in parallel, zero
 failures). Canonical merged results are in `results/results.json`; job-ID
-provenance in `full_job_ids.txt`. Two patterns in the real numbers are
-flagged as not-yet-diagnosed in NOTES_AND_ASSUMPTIONS.md section (g) --
-the 8B tier's cost-metric results are far worse than the non-LLM
-baselines, and `negotiation_tool`/large is the worst cost performer among
-70B configs, contrary to the paper's monotonic-improvement hypothesis --
-before treating this as a finished comparison against the paper's Table 1
-/ Table 2.
+provenance in `full_job_ids.txt`. Two patterns in the real numbers were
+flagged in NOTES_AND_ASSUMPTIONS.md section (g) as contradicting the
+paper's own claims (negotiation is supposed to be the *best* framework on
+both metrics; ours showed it as the *worst* for 70B).
+
+**Update (2026-09-05): root cause found and fixed, section (h).** The
+negotiation gap traced to a real bug, not a model-family difference:
+`BaseChatClient.chat()` is stateless per call, so the final "what is your
+final answer?" question carried zero memory of the negotiation that just
+happened. 15.5% of negotiation sessions in the real run produced a final
+order clamped to the hard max-order cap, completely disconnected from an
+otherwise coherent, converging conversation -- directly explaining the
+inflated bullwhip. Fixed by grounding the final-answer prompt in the
+actual transcript (`prompts.py`'s `negotiation_final_question_prompt`).
+Not yet re-run against the full grid to confirm the quantitative effect.

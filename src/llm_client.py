@@ -19,6 +19,7 @@ switching backends never changes behaviour around malformed output.
 """
 import os
 import re
+import sys
 
 import requests
 
@@ -99,6 +100,13 @@ class BaseChatClient:
                 return int(max(0, min(round(value), max_order)))
             except (MalformedOutputError, KeyError, ValueError, requests.RequestException) as e:
                 last_error = e
+                # Diagnostic visibility into how often the retry path fires
+                # (see NOTES_AND_ASSUMPTIONS.md section (g) -- Llama 3.1 is
+                # documented to break the strict [[N]] format more often
+                # than the paper's Gemini models; this makes that measurable
+                # instead of theorized).
+                model = getattr(self, "model", "?")
+                print(f"RETRY model={model} attempt={attempt + 1}/{MAX_RETRIES} error={e}", file=sys.stderr, flush=True)
         raise MalformedOutputError(
             f"Failed to get a well-formatted order decision after {MAX_RETRIES} attempts: {last_error}"
         )

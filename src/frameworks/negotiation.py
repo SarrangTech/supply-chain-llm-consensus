@@ -37,7 +37,7 @@ from typing import TypedDict
 from langgraph.graph import StateGraph, START, END
 
 from ..config import FIXED_PARAMS
-from ..prompts import negotiation_intro_prompt, negotiation_turn_prompt, NEGOTIATION_FINAL_QUESTION
+from ..prompts import negotiation_intro_prompt, negotiation_turn_prompt, negotiation_final_question_prompt
 from ..tools import demand_forecast_tool, eoq_tool
 
 NUM_ITER = FIXED_PARAMS["num_negotiation_iters"]
@@ -98,13 +98,23 @@ def _node_final_decision(state: NegotiationState) -> NegotiationState:
         # "System: What is your final answer?" step. strict_format=True
         # here (unlike the earlier free-form negotiation turns) since this
         # reply must itself contain a parseable [[N]] answer.
-        reply = client.chat(NEGOTIATION_FINAL_QUESTION + f" (Your EOQ was {own_eoq:.2f}.)", strict_format=True)
+        #
+        # Grounded in the actual transcript (see prompts.py's
+        # negotiation_final_question_prompt docstring / NOTES_AND_ASSUMPTIONS.md
+        # section (g)) -- BaseChatClient.chat() has no memory between calls,
+        # so without this the model answered blind, disconnected from
+        # whatever it just negotiated.
+        final_question = negotiation_final_question_prompt(state["transcript"], own_eoq)
+        reply = client.chat(final_question, strict_format=True)
         match = ORDER_PATTERN.search(reply)
         if match:
             return int(max(0, min(round(float(match.group(1))), state["max_order"])))
         # Fall back to the structured single-shot decision call if the
         # free-form chat reply didn't contain a parseable [[N]] answer.
-        return client.get_order_decision(NEGOTIATION_FINAL_QUESTION, max_order=state["max_order"])
+        import sys
+        model = getattr(client, "model", "?")
+        print(f"NEGOTIATION_FINAL_FALLBACK model={model} unparseable_reply={reply!r}", file=sys.stderr, flush=True)
+        return client.get_order_decision(final_question, max_order=state["max_order"])
 
     state["downstream_order"] = _extract_or_ask_again(state["downstream_client"], state["downstream_eoq"])
     state["upstream_order"] = _extract_or_ask_again(state["upstream_client"], state["upstream_eoq"])
@@ -138,7 +148,15 @@ def _build_negotiation_graph():
 _NEGOTIATION_GRAPH = _build_negotiation_graph()
 
 
-def make_negotiation_decision_fn(clients: dict, model_tiers: dict, metric: str):
+def make_negotiation_decision_fn(clients: dict, model_tiers: dict, metric: str, transcript_sink: list | None = None):
+    """
+    transcript_sink: if given, every pairwise negotiation's full turn-by-turn
+    transcript (plus the step index and both final orders) is appended to
+    it. Diagnostic use only (see NOTES_AND_ASSUMPTIONS.md section (g)) --
+    the real conversation text is otherwise computed and immediately
+    discarded, which made it impossible to tell *why* an aggregate cost/
+    bullwhip number looked off without rerunning with this on.
+    """
     def decision_fn(env) -> list[int]:
         final_orders = {}
 
@@ -165,6 +183,17 @@ def make_negotiation_decision_fn(clients: dict, model_tiers: dict, metric: str):
             result = _NEGOTIATION_GRAPH.invoke(init_state)
             final_orders[d_idx] = result["downstream_order"]
             final_orders[u_idx] = result["upstream_order"]
+
+            if transcript_sink is not None:
+                transcript_sink.append({
+                    "step": env.t,
+                    "pair": [d_idx, u_idx],
+                    "downstream_eoq": d_tool,
+                    "upstream_eoq": u_tool,
+                    "transcript": result["transcript"],
+                    "downstream_order": result["downstream_order"],
+                    "upstream_order": result["upstream_order"],
+                })
 
         return [final_orders[i] for i in range(env.num_agents)]
 

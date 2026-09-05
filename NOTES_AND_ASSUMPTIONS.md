@@ -416,6 +416,80 @@ quality -- they are flagged here as the next things worth investigating
 (starting with the retry/malformed-output logs for the affected shards)
 before drawing any comparison to the paper's Table 1 / Table 2 findings.
 
+## (h) Root cause of the negotiation anomaly, found and fixed (2026-09-05)
+
+Investigated observation (2) from section (g) directly against the paper's
+own text (arXiv:2411.10184, pages 15-20). The paper explicitly claims
+negotiation should be the *best* framework on both metrics: "for both
+models used, the performance of the negotiation framework beats the hard
+baseline involving tool-based restocking policy" (cost), and "the best
+bullwhip effect performance was achieved with the negotiation framework...
+a 66.2% bullwhip effect reduction compared to information sharing with
+tool in the case of Gemini Pro" (bullwhip). Our replication showed the
+opposite: negotiation was the *worst* 70B config on both metrics.
+
+**Ruled out first:** malformed-output retries (zero occurred -- checked
+directly via the retry-warning logging added for this investigation, see
+`llm_client.py`'s `RETRY`/`NEGOTIATION_FINAL_FALLBACK` print statements)
+and node/hardware contention (per-call latency was normal throughout).
+
+**Actual root cause, confirmed by inspecting real negotiation transcripts**
+(via a new `--include-transcripts` diagnostic flag, see below): 62 of 400
+negotiation sessions (15.5%) in a real 200-step run produced a final order
+clamped to the hard max-order cap (100), completely disconnected from an
+otherwise coherent, converging conversation. Example: two agents with
+EOQs of 2.31 and 1.15 negotiate sensibly toward "an order quantity of
+2.0... a compromise that takes into account both" -- and the recorded
+final order is 100.
+
+The reason: `BaseChatClient.chat()` (`llm_client.py`) is a stateless,
+single-turn call by design -- it builds a fresh `messages` list on every
+invocation, with no conversation history parameter anywhere. Each
+negotiation turn's only context is whatever text is manually quoted into
+that one prompt (`negotiation_turn_prompt` quotes only the counterpart's
+*immediately preceding* message). The final "What is your final answer?"
+question (`NEGOTIATION_FINAL_QUESTION`) included **none** of the preceding
+conversation -- only the agent's own EOQ. The model was asked to commit to
+a number with zero memory of what it had just negotiated, and, asked to
+"provide an integer from 0 to 100" with no real basis to decide, seems to
+anchor on the boundary value stated in its own instructions rather than a
+genuine decision. Order values oscillating between ~2 and 100 repeatedly
+is close to a worst case for a bullwhip coefficient-of-variation metric,
+and plausibly explains most of the 1.954-vs-0.144 gap on its own.
+
+This is a real implementation gap, not a new deviation from the paper's
+design -- the paper's Gemini-based negotiation almost certainly preserved
+full conversation memory automatically (a standard property of
+conversational chat APIs), so grounding the final question in the
+transcript is a correctness fix, not a methodological change.
+
+**Fix applied:** `prompts.py`'s new `negotiation_final_question_prompt()`
+renders the full transcript into the final-answer prompt explicitly, and
+`negotiation.py`'s `_node_final_decision` uses it (for both the primary
+`chat()` call and the `get_order_decision()` fallback) instead of the bare
+context-free question. Not yet re-run to confirm the fix's quantitative
+effect on the full 200-step grid -- see "How to actually run this" below
+for the diagnostic tooling (`--include-histories`, `--include-transcripts`)
+used to find this, which stays in the codebase for future use.
+
+**New diagnostic instrumentation added alongside this fix** (off by
+default, so normal runs are unaffected):
+- `run_experiments.py --include-histories`: attaches
+  `per_agent_order_history` / `_inventory_history` / `_backlog_history` to
+  each result, so aggregate cost/bullwhip numbers can be traced back to
+  actual per-step behavior instead of taken on faith.
+- `run_experiments.py --include-transcripts`: attaches the full
+  `negotiation_transcripts` (every pairwise negotiation's turn-by-turn
+  text, EOQs, and final orders) for `negotiation_tool` configs -- this is
+  what surfaced the bug above; the conversation text was otherwise
+  computed and immediately discarded.
+- `llm_client.py`: prints a `RETRY ...` line to stderr whenever the
+  malformed-output retry path fires, and `negotiation.py` prints
+  `NEGOTIATION_FINAL_FALLBACK ...` whenever the final-answer chat reply
+  doesn't parse -- makes "does Llama break format more than Gemini did"
+  measurable instead of theorized (measured: not the cause here, zero
+  fired).
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):

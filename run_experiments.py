@@ -42,6 +42,8 @@ def main():
                          help="Comma-separated: standalone,info_sharing,standalone_tool,info_sharing_tool,negotiation_tool")
     parser.add_argument("--only-model-tier", type=str, default=None, help="Comma-separated: small,large")
     parser.add_argument("--skip-baselines", action="store_true", help="Exclude non-LLM baseline configs from this shard.")
+    parser.add_argument("--include-histories", action="store_true", help="Attach per-step order/inventory/backlog history to each result (diagnostic use, larger output files).")
+    parser.add_argument("--include-transcripts", action="store_true", help="Attach full negotiation conversation transcripts to negotiation_tool results (diagnostic use, much larger output files).")
     parser.add_argument("--merge", nargs="+", default=None, help="Merge these shard result JSON files instead of running anything.")
     args = parser.parse_args()
 
@@ -95,7 +97,7 @@ def main():
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     print(f"Running {len(grid)} configuration(s)...")
-    results = run_full_grid(use_mock=args.mock, out_path=args.out, grid=grid)
+    results = run_full_grid(use_mock=args.mock, out_path=args.out, grid=grid, include_histories=args.include_histories, include_transcripts=args.include_transcripts)
 
     print()
     print(format_all_tables(results))

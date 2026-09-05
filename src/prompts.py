@@ -217,3 +217,25 @@ NEGOTIATION_FINAL_QUESTION = (
     "triple brackets, for example: [[2]]. Do not show your reasoning or explanation "
     "-- your entire reply must be only the bracketed number, nothing else."
 )
+
+
+def negotiation_final_question_prompt(transcript: list[tuple[str, str]], own_eoq: float) -> str:
+    """
+    BUG FIX (see NOTES_AND_ASSUMPTIONS.md section (g)): BaseChatClient.chat()
+    is a stateless, single-turn call by design (no conversation history is
+    kept between calls) -- every earlier version of this final question was
+    sent with NO memory of the negotiation that just happened, only the
+    agent's own EOQ. Measured effect: 62/400 (15.5%) of negotiation sessions
+    in a real 200-step run produced a final answer clamped to the hard
+    max-order cap (100), completely disconnected from an otherwise coherent,
+    converging conversation -- because the model had no way to know what was
+    actually discussed or agreed. This grounds the final question in the
+    transcript explicitly, since nothing else carries it forward.
+    """
+    convo = "\n".join(f'{speaker}: "{text}"' for speaker, text in transcript)
+    return (
+        "Here is the negotiation conversation you just had:\n\n"
+        f"{convo}\n\n"
+        + NEGOTIATION_FINAL_QUESTION
+        + f" (Your own EOQ was {own_eoq:.2f}.)"
+    )

@@ -96,14 +96,21 @@ def make_client_factory(use_mock: bool):
     return factory
 
 
-def run_single_experiment(config: dict, use_mock: bool = False, demand=None) -> dict:
+def run_single_experiment(config: dict, use_mock: bool = False, demand=None, include_histories: bool = False, include_transcripts: bool = False) -> dict:
     """
     config keys: metric ("cost"|"bullwhip"), baseline (name or None),
     framework (name or None), model_tier ("small"|"large"|None for baselines
     that use both agents' tiers identically -- baselines are model-free).
+
+    include_histories: attach per_agent_order/inventory/backlog_history to
+    the returned dict. Off by default (keeps normal result files small);
+    used for diagnosing *why* a config's aggregate cost/bullwhip looks off,
+    e.g. checking whether negotiation's per-step orders converge smoothly
+    or swing wildly (see NOTES_AND_ASSUMPTIONS.md section (g)).
     """
     env = _new_env(demand)
     metric = config["metric"]
+    transcript_sink = None
 
     if config.get("baseline") == "ss_policy":
         decision_fn = _ss_policy_decision_fn
@@ -127,7 +134,8 @@ def run_single_experiment(config: dict, use_mock: bool = False, demand=None) -> 
         elif framework == "info_sharing_tool":
             decision_fn = make_info_sharing_decision_fn(clients, model_tiers, metric, use_tool=True)
         elif framework == "negotiation_tool":
-            decision_fn = make_negotiation_decision_fn(clients, model_tiers, metric)
+            transcript_sink = [] if include_transcripts else None
+            decision_fn = make_negotiation_decision_fn(clients, model_tiers, metric, transcript_sink=transcript_sink)
         else:
             raise ValueError(f"Unknown framework: {framework}")
 
@@ -136,12 +144,19 @@ def run_single_experiment(config: dict, use_mock: bool = False, demand=None) -> 
     elapsed = time.time() - t0
 
     results = env.results()
-    return {
+    out = {
         "config": config,
         "cost": global_cost(results),
         "bullwhip": global_bullwhip(results["per_agent_order_history"]),
         "elapsed_sec": elapsed,
     }
+    if include_histories:
+        out["per_agent_order_history"] = results["per_agent_order_history"]
+        out["per_agent_inventory_history"] = results["per_agent_inventory_history"]
+        out["per_agent_backlog_history"] = results["per_agent_backlog_history"]
+    if transcript_sink is not None:
+        out["negotiation_transcripts"] = transcript_sink
+    return out
 
 
 def build_cost_grid() -> list[dict]:
@@ -214,6 +229,8 @@ def run_full_grid(
     use_mock: bool = False,
     out_path: str = "results/results.json",
     grid: list[dict] | None = None,
+    include_histories: bool = False,
+    include_transcripts: bool = False,
 ) -> list[dict]:
     # Same demand series reused across all configs within a metric, so
     # comparisons are apples-to-apples (paper's Appendix 6: one fixed
@@ -225,7 +242,7 @@ def run_full_grid(
     all_results = []
     for config in (grid if grid is not None else build_full_grid()):
         print(f"Running: {config['label']} ({config['metric']})...", flush=True)
-        result = run_single_experiment(config, use_mock=use_mock, demand=demand)
+        result = run_single_experiment(config, use_mock=use_mock, demand=demand, include_histories=include_histories, include_transcripts=include_transcripts)
         print(f"  -> cost={result['cost']:.1f}, bullwhip={result['bullwhip']:.5f}, "
               f"time={result['elapsed_sec']:.1f}s", flush=True)
         all_results.append(result)
