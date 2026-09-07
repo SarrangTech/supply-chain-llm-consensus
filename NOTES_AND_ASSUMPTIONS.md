@@ -537,10 +537,28 @@ simply more frequent/severe for Llama 3.1 than for Gemini, or points to a
 further fixable issue (e.g. the mid-negotiation turns still only ever see
 the counterpart's *immediately preceding* message, never the full
 transcript, so an agent can lose track of its own earlier proposals) has
-not been determined. Next step, not yet done: rerun with the parser fix in
-place across both metrics and inspect whether the medium-magnitude spikes
+not been determined. Next step, not yet done: inspect whether the medium-magnitude spikes
 correlate with anything identifiable in the transcripts (e.g. specific
 demand-shock periods, or a particular agent role).
+
+**Full before/after picture, both metrics, `negotiation_tool`/large, 200
+steps** (cost-metric rerun done after the parser fix too -- confirmed no
+crash, `MAX_RETRIES` never exhausted):
+
+| Config | Cost (before) | Cost (after both fixes) | Bullwhip (before) | Bullwhip (after) | Spike-to-100 rate |
+|---|---|---|---|---|---|
+| cost metric | 770,118 | 333,060 | 0.299 | 1.069 | not measured -> 1.2% (5/400) |
+| bullwhip metric | 797,902 | 150,755 | 1.946 | 6.227 | 15.5% (62/400) -> 0.2% (1/400) |
+
+Pattern: both fixes substantially improve **cost** in both metric
+conditions. Neither fixes -- and the bullwhip-metric condition actively
+worsens on -- **bullwhip specifically**. This narrows the still-open
+question in section (h.1) to something bullwhip-specific: whatever is
+producing occasional erratic (not-clamped-to-100, cleanly-parsed, first-
+attempt) order values seems to hurt order-to-order *variance* more than it
+hurts the *cost* objective, consistent with (but not proof of) it being
+the same "occasionally goes to one extreme" LLM negotiation behavior the
+paper itself acknowledges, just more frequent/severe here than for Gemini.
 
 ## How to actually run this
 
