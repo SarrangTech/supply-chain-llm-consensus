@@ -490,6 +490,58 @@ default, so normal runs are unaffected):
   measurable instead of theorized (measured: not the cause here, zero
   fired).
 
+### (h.1) Verification results (2026-09-05/07): partial fix, one new bug found and fixed, one deeper issue still open
+
+Reran `negotiation_tool`/large (both metrics, full 200 steps,
+`--include-histories --include-transcripts`) after the transcript-grounding
+fix above, to check its actual quantitative effect rather than assume it
+worked.
+
+**What the fix solved, confirmed:** the diagnosed bug (final answer
+completely disconnected from the conversation, clamped to the hard
+max-order cap) is essentially gone. Spike-to-100 rate dropped from 15.5%
+(62/400 sessions) to 0.2% (1/400). Cost for the bullwhip-metric config
+also improved substantially (797,902 -> 150,755).
+
+**A new failure mode the fix itself introduced:** the cost-metric rerun
+crashed outright --
+`MalformedOutputError: ... No [[N]] pattern found in: '[[sqrt(9.00*7.00) = sqrt(63.00) = 7.94, rounded to 8]]'`.
+Grounding the final question in the actual transcript means the model now
+sees the conversation's own EOQ-averaging arithmetic, and it started
+imitating that shown-work style even in the strict-format answer -- which
+the original strict `[[N]]`-only regex rejected, and after `MAX_RETRIES`
+consecutive rejections the whole run raised uncaught and died. **Fixed**:
+`llm_client.py`'s new `parse_order_answer()` tries the strict pattern
+first, then falls back to extracting the *last* number found inside the
+brackets (a model restating a calculation states the final/rounded result
+last -- "= 7.94, rounded to 8" -> 8, not 7.94 or the 9/7 inputs). Both
+`get_order_decision()` and `negotiation.py`'s primary final-answer path
+now use this shared helper. Not a new deviation from the paper either --
+it's a parser robustness fix for a side effect the grounding fix itself
+introduced.
+
+**Deeper issue, still open, NOT fixed by either change above:** bullwhip
+for the same config got *worse*, not better (1.946 -> 6.227). Inspecting
+the actual order sequences: the catastrophic clamp-to-100 spikes are gone,
+but new medium-magnitude spikes appeared instead (e.g. 50, 88, 42, 85, 60
+scattered through an otherwise stable ~3-8 baseline). Checked and ruled
+out: these are not retry-driven guesses (zero `RETRY`/`NEGOTIATION_FINAL_FALLBACK`
+lines in that job's log -- every one of these answers parsed cleanly on
+the first attempt). That means even with full transcript grounding and
+clean formatting, the model's final decision is still genuinely
+inconsistent step-to-step in a way that inflates bullwhip -- closer to
+what the paper itself acknowledges as an occasional Gemini behavior
+("going for one extreme of the negotiation interval or disagreeing
+altogether," Section 6.2.1) than to a bug we introduced. Whether this is
+simply more frequent/severe for Llama 3.1 than for Gemini, or points to a
+further fixable issue (e.g. the mid-negotiation turns still only ever see
+the counterpart's *immediately preceding* message, never the full
+transcript, so an agent can lose track of its own earlier proposals) has
+not been determined. Next step, not yet done: rerun with the parser fix in
+place across both metrics and inspect whether the medium-magnitude spikes
+correlate with anything identifiable in the transcripts (e.g. specific
+demand-shock periods, or a particular agent role).
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):

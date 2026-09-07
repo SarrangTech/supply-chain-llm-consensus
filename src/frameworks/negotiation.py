@@ -91,7 +91,7 @@ def _loop_or_finalise(state: NegotiationState) -> str:
 
 
 def _node_final_decision(state: NegotiationState) -> NegotiationState:
-    from ..llm_client import ORDER_PATTERN
+    from ..llm_client import parse_order_answer
 
     def _extract_or_ask_again(client, own_eoq) -> int:
         # Ask explicitly for the final numeric answer, per Figure 9's
@@ -106,11 +106,15 @@ def _node_final_decision(state: NegotiationState) -> NegotiationState:
         # whatever it just negotiated.
         final_question = negotiation_final_question_prompt(state["transcript"], own_eoq)
         reply = client.chat(final_question, strict_format=True)
-        match = ORDER_PATTERN.search(reply)
-        if match:
-            return int(max(0, min(round(float(match.group(1))), state["max_order"])))
-        # Fall back to the structured single-shot decision call if the
-        # free-form chat reply didn't contain a parseable [[N]] answer.
+        # parse_order_answer (section (h)) tolerates reasoning shown inside
+        # the brackets -- grounding the question in the transcript measurably
+        # made the model more likely to imitate the conversation's own
+        # shown-work style even here, breaking the bare-[[N]] assumption.
+        value = parse_order_answer(reply, state["max_order"])
+        if value is not None:
+            return value
+        # Fall back to the structured single-shot decision call if even the
+        # lenient extraction found no number at all.
         import sys
         model = getattr(client, "model", "?")
         print(f"NEGOTIATION_FINAL_FALLBACK model={model} unparseable_reply={reply!r}", file=sys.stderr, flush=True)

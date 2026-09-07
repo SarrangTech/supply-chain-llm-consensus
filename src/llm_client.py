@@ -43,6 +43,34 @@ from .config import (
 
 MAX_RETRIES = 3
 ORDER_PATTERN = re.compile(r"\[\[\s*(-?\d+(?:\.\d+)?)\s*\]\]")
+_BRACKET_CONTENT_PATTERN = re.compile(r"\[\[(.*?)\]\]", re.DOTALL)
+_NUMBER_PATTERN = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def parse_order_answer(text: str, max_order: int) -> int | None:
+    """
+    Extract a final integer order amount from a model reply. Tries the
+    strict [[N]] format first (bare number, exactly as instructed). Falls
+    back to a lenient extraction if the model showed reasoning inside the
+    brackets instead of a bare number (e.g.
+    "[[sqrt(9.00*7.00) = 7.94, rounded to 8]]") -- measured to happen more
+    often once negotiation.py's final-answer question was grounded in the
+    actual transcript (NOTES_AND_ASSUMPTIONS.md section (h)): richer
+    context makes the model more likely to imitate the conversation's own
+    shown-work style even in a strict-format answer. Takes the LAST number
+    inside the brackets, since a model restating a calculation states the
+    final/rounded result last ("= 7.94, rounded to 8" -> 8, not 7.94 or the
+    9/7 inputs). Returns None if no number could be extracted at all.
+    """
+    match = ORDER_PATTERN.search(text)
+    if match:
+        return int(max(0, min(round(float(match.group(1))), max_order)))
+    bracket_match = _BRACKET_CONTENT_PATTERN.search(text)
+    if bracket_match:
+        numbers = _NUMBER_PATTERN.findall(bracket_match.group(1))
+        if numbers:
+            return int(max(0, min(round(float(numbers[-1])), max_order)))
+    return None
 
 # FLAGGED JUDGMENT CALL / NEW ADAPTATION (not in the paper, disclosed here
 # and in NOTES_AND_ASSUMPTIONS.md): Llama 3.1 (unlike the paper's Gemini
@@ -90,14 +118,14 @@ class BaseChatClient:
         for attempt in range(MAX_RETRIES):
             try:
                 content = self._call_raw(messages)
-                match = ORDER_PATTERN.search(content)
-                if not match:
-                    raise MalformedOutputError(f"No [[N]] pattern found in: {content!r}")
-                value = float(match.group(1))
                 # Hard-coded backstop, independent of prompt instructions
                 # (Section 7.1: "constraints are handled ... through
-                # hard-coded backstops in the environment").
-                return int(max(0, min(round(value), max_order)))
+                # hard-coded backstops in the environment"). parse_order_answer
+                # already clamps to max_order.
+                value = parse_order_answer(content, max_order)
+                if value is None:
+                    raise MalformedOutputError(f"No [[N]] pattern found in: {content!r}")
+                return value
             except (MalformedOutputError, KeyError, ValueError, requests.RequestException) as e:
                 last_error = e
                 # Diagnostic visibility into how often the retry path fires

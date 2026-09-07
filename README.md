@@ -130,13 +130,25 @@ flagged in NOTES_AND_ASSUMPTIONS.md section (g) as contradicting the
 paper's own claims (negotiation is supposed to be the *best* framework on
 both metrics; ours showed it as the *worst* for 70B).
 
-**Update (2026-09-05): root cause found and fixed, section (h).** The
-negotiation gap traced to a real bug, not a model-family difference:
-`BaseChatClient.chat()` is stateless per call, so the final "what is your
-final answer?" question carried zero memory of the negotiation that just
-happened. 15.5% of negotiation sessions in the real run produced a final
-order clamped to the hard max-order cap, completely disconnected from an
-otherwise coherent, converging conversation -- directly explaining the
-inflated bullwhip. Fixed by grounding the final-answer prompt in the
-actual transcript (`prompts.py`'s `negotiation_final_question_prompt`).
-Not yet re-run against the full grid to confirm the quantitative effect.
+**Update (2026-09-05/07): one real bug found and fixed, verified, and a
+second (smaller) one found along the way -- but the negotiation/bullwhip
+gap is not fully closed yet, section (h)/(h.1).** Root cause #1, confirmed
+not a model-family difference: `BaseChatClient.chat()` is stateless per
+call, so the final "what is your final answer?" question carried zero
+memory of the negotiation that just happened. 15.5% of negotiation
+sessions in the real run produced a final order clamped to the hard
+max-order cap, completely disconnected from an otherwise coherent,
+converging conversation. Fixed by grounding the final-answer prompt in the
+actual transcript (`prompts.py`'s `negotiation_final_question_prompt`) --
+verified: spike rate dropped to 0.2% and cost improved substantially.
+That fix surfaced a second, smaller bug (the model started showing
+calculation work inside the answer brackets, breaking the strict parser
+and crashing one run) -- fixed via a lenient fallback parser
+(`llm_client.py`'s `parse_order_answer()`). **Still open:** bullwhip for
+the verified config got *worse*, not better (1.946 -> 6.227) -- new,
+smaller-magnitude but still erratic final answers appeared in place of the
+old clamp-to-100 spikes, confirmed not retry-driven (every one parsed
+cleanly on the first attempt). This looks closer to the paper's own
+acknowledged "occasionally goes to one extreme" LLM negotiation behavior
+than to a bug, but that isn't confirmed yet -- see section (h.1) for the
+full picture and what's still unresolved.
