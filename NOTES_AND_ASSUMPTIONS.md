@@ -560,6 +560,30 @@ hurts the *cost* objective, consistent with (but not proof of) it being
 the same "occasionally goes to one extreme" LLM negotiation behavior the
 paper itself acknowledges, just more frequent/severe here than for Gemini.
 
+**Refinement (2026-09-07): the "erratic values" are mostly a shared
+convergence anchor, not independent agent noise.** Checked whether
+downstream and upstream land on the *same* final order across all 400
+bullwhip-metric sessions: **348/400 (87%) produce an identical shared
+value** for both agents, despite each having a different EOQ. This isn't
+itself a bug -- it's a direct match to the paper's own description of LLM
+negotiation strategy ("primarily use the average strategy," Section
+6.2.1): both agents see the same shared transcript and converge on one
+compromise number, which is the intended behavior. The actual problem is
+narrower than "occasional independent extremes": **26 of those 400
+sessions (6.5%) converge on a large, implausible *shared* value instead
+of a small reasonable one** (e.g. both agents ordering 50, or both
+ordering 88, with EOQs around 3-4). Since both agents shift together, this
+produces a correlated shock rather than one agent's noise being smoothed
+by the other's stability -- plausibly worse for a bullwhip
+coefficient-of-variation metric than independent per-agent noise would
+be. Not yet diagnosed further: the raw final-answer *text* isn't captured
+by the current `--include-transcripts` instrumentation (only the parsed
+integer is), so it's not yet possible to see whether these 26 sessions
+share a common trigger (e.g. the 90-token output truncation cutting the
+final reply off mid-number, or a specific pattern in how the transcript's
+concluding lines get summarized). Capturing the raw final-reply text
+alongside the parsed value would be the next diagnostic step.
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):
