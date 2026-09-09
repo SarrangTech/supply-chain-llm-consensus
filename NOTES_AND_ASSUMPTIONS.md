@@ -666,6 +666,35 @@ not because the fixes didn't work. The clearest remaining, systematic
 fall back to a sensible default, when both EOQs are 0) if pursuing this
 further.
 
+### (i.2) Third fix: skip negotiation entirely for the degenerate zero-EOQ startup case (2026-09-09)
+
+Confirmed in `tools.py`: both `eoq_tool` and `demand_forecast_tool` return
+exactly `0.0` when `demand_history` is still empty -- true at step 0 (and
+occasionally step 1, before an agent has received its first observed
+demand). `negotiation_intro_prompt` tells the model to "use the EOQs
+shared by each agent as upper and lower bound for the negotiation"; when
+both are 0.0 this is a `[0, 0]` bound, i.e. meaningless. The model doesn't
+recognise this as undefined and instead guesses an arbitrary round number
+-- observed as 50 on every single rerun, at the same 1-2 steps, unlike
+the randomly-occurring decimal-stripping bug in section (i).
+
+**Fix applied:** `negotiation.py`'s `make_negotiation_decision_fn` now
+checks `d_tool == 0.0 and u_tool == 0.0` before invoking the negotiation
+graph, and if true, skips the LLM negotiation entirely for that pair/step
+and orders 0 directly. This isn't just a workaround -- with genuinely no
+established demand yet, 0 is also the most defensible order, and it saves
+an otherwise-wasted round of LLM calls (a full negotiation graph
+invocation, ~6+ calls) on a bound that carries no information. The
+transcript_sink entry for a skipped step is recorded with an empty
+transcript and `skipped_degenerate_zero_eoq: true`, so this remains
+visible in diagnostic output rather than silently disappearing.
+
+Not yet re-run to confirm the effect on the aggregate bullwhip number --
+expected to close out the 3 remaining large-shared-anchor cases from
+section (i.1) (all of which were this exact pattern), leaving only the
+one unexplained isolated case (step 190, section (i.1)) as an open
+question.
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):

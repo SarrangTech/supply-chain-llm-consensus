@@ -178,6 +178,35 @@ def make_negotiation_decision_fn(clients: dict, model_tiers: dict, metric: str, 
                 d_tool = eoq_tool(d_agent.demand_history, FIXED_PARAMS["ordering_cost"], FIXED_PARAMS["inventory_cost"], FIXED_PARAMS["demand_forecast_lookback"])
                 u_tool = eoq_tool(u_agent.demand_history, FIXED_PARAMS["ordering_cost"], FIXED_PARAMS["inventory_cost"], FIXED_PARAMS["demand_forecast_lookback"])
 
+            # Degenerate startup case (see NOTES_AND_ASSUMPTIONS.md section
+            # (i.1)): both tools return exactly 0.0 when demand_history is
+            # still empty (step 0, occasionally step 1), making "negotiate
+            # using your EOQs as bounds" meaningless -- a [0, 0] range.
+            # Measured effect: the model doesn't recognise this as
+            # undefined and instead guesses an arbitrary round number
+            # (observed: 50, every run, same 1-2 steps). Skip the LLM
+            # negotiation entirely here rather than ask it to negotiate
+            # over a bound that carries no information -- there is
+            # genuinely no established demand yet, so 0 is also the most
+            # sensible order, not just a workaround.
+            if d_tool == 0.0 and u_tool == 0.0:
+                final_orders[d_idx] = 0
+                final_orders[u_idx] = 0
+                if transcript_sink is not None:
+                    transcript_sink.append({
+                        "step": env.t,
+                        "pair": [d_idx, u_idx],
+                        "downstream_eoq": d_tool,
+                        "upstream_eoq": u_tool,
+                        "transcript": [],
+                        "downstream_order": 0,
+                        "upstream_order": 0,
+                        "downstream_final_reply": None,
+                        "upstream_final_reply": None,
+                        "skipped_degenerate_zero_eoq": True,
+                    })
+                continue
+
             init_state: NegotiationState = {
                 "downstream_idx": d_idx,
                 "upstream_idx": u_idx,
