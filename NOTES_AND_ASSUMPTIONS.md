@@ -621,9 +621,50 @@ an integer."
 **Fix applied:** `prompts.py`'s `NEGOTIATION_FINAL_QUESTION` now explicitly
 instructs rounding to the nearest whole number, with the exact observed
 failure mode given as a negative example ("4.54 rounds to 5, NOT 45 or
-54; 3.4 rounds to 3, NOT 34"). Verification rerun in progress at the time
-of writing -- see the next commit for the confirmed before/after effect
-on the bullwhip number.
+54; 3.4 rounds to 3, NOT 34").
+
+### (i.1) Verification (2026-09-09): fix confirmed effective, bullwhip metric itself is the remaining obstacle
+
+Reran the bullwhip-metric shard (200 steps) with the rounding instruction
+in place. Results vs. the pre-fix rerun in section (h.1)/(i):
+
+| | Cost | Large-shared-anchor rate | Spike-to-100 |
+|---|---|---|---|
+| Before this fix | 150,755 | 23/400 (5.75%) | 1/400 |
+| After this fix | 57,409 | 3/400 (0.75%) | 2/400 |
+
+The decimal-stripping bug is essentially gone: every one of the 20
+"normal EOQ, wrong shared value" cases catalogued in section (i) is
+absent from this rerun. The only 3 remaining large-shared-anchor cases
+are all the same *degenerate* pattern -- step 0 and step 1, before enough
+demand history exists for `eoq_tool` to return anything but 0.00 for
+either agent, making "negotiate using your EOQs as bounds" nonsensical
+(bounds of [0, 0]). This is a distinct, structural, third issue, not a
+recurrence of the decimal bug -- and unlike the decimal bug, it happens
+on *every* run, at the same 1-2 steps, not randomly.
+
+**Cost keeps improving** (150,755 -> 57,409, continuing the trend from
+section (h.1)'s table) but **bullwhip got worse again** (6.227 -> 8.538
+in this run), despite both diagnosed bugs being genuinely, verifiably
+fixed. Why: bullwhip is a coefficient-of-variation (std/mean) computed
+over the *entire* 200-step order history per agent, against a very low,
+tight steady-state baseline (mean ~3.4-3.8, most values clustered 2-6).
+Population standard deviation is extremely sensitive to rare outliers
+against such a low mean -- even 1-3 outlier events out of 200 steps can
+dominate the ratio. One isolated, non-shared, non-degenerate case also
+surfaced this run (step 190, EOQs 2.13/3.30, clean `[[67]]`/`[[50]]`
+answers with no obvious decimal-strip explanation) -- a residual failure
+mode not yet characterized, occurring far less often than either fixed
+bug (1/400 this run).
+
+**Net assessment:** both diagnosed bugs are real, fixed, and verified.
+The bullwhip *metric* remains elevated mainly because it's mathematically
+unforgiving of the still-nonzero (now much rarer) residual outlier rate,
+not because the fixes didn't work. The clearest remaining, systematic
+(not random) lead is the degenerate EOQ=[0,0] bound at simulation start
+(steps 0-1) -- worth a targeted fix (e.g. skip the EOQ-bound framing, or
+fall back to a sensible default, when both EOQs are 0) if pursuing this
+further.
 
 ## How to actually run this
 
