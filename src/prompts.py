@@ -213,9 +213,13 @@ def negotiation_turn_prompt(counterpart_message: str, own_eoq: float) -> str:
 
 NEGOTIATION_FINAL_QUESTION = (
     "What is your final answer? Please provide only a number in the form of an "
-    f"integer value from 0 to {MAX_ORDER}. Enclose your numerical answer within "
-    "triple brackets, for example: [[2]]. Do not show your reasoning or explanation "
-    "-- your entire reply must be only the bracketed number, nothing else."
+    f"integer value from 0 to {MAX_ORDER}. If your reasoning produced a decimal "
+    "value, ROUND it to the nearest whole number -- do not remove the decimal "
+    "point and do not drop the digits before or after it (e.g. 4.54 rounds to "
+    "5, NOT 45 or 54; 3.4 rounds to 3, NOT 34). Enclose your numerical answer "
+    "within triple brackets, for example: [[2]]. Do not show your reasoning or "
+    "explanation -- your entire reply must be only the bracketed number, "
+    "nothing else."
 )
 
 

@@ -584,6 +584,47 @@ final reply off mid-number, or a specific pattern in how the transcript's
 concluding lines get summarized). Capturing the raw final-reply text
 alongside the parsed value would be the next diagnostic step.
 
+## (i) Final root cause found: decimal point stripped, not rounded (2026-09-09)
+
+Added raw final-reply-text capture (the transcript_sink now stores
+`downstream_final_reply`/`upstream_final_reply`, the literal model output,
+not just the parsed integer) and reran the bullwhip-metric shard. Result:
+every one of the 23 large-shared-anchor sessions has **clean, correctly-
+formatted `[[N]]` output** -- this is not a parsing problem at all. The
+model's reasoning is fine; the final numeric answer is not.
+
+Pattern, confirmed across the transcripts (not a guess):
+
+| Computed value (from the conversation) | Final `[[N]]` answer | What happened |
+|---|---|---|
+| 4.54 (geometric mean, shown explicitly: `sqrt(4.97*4.16) = sqrt(20.63) ~ 4.54`) | 45 | decimal point stripped |
+| 4.7 | 47 | decimal point stripped |
+| 3.9 (from `(3.53+4.26)/2 = 3.895`, rounded) | 39 | decimal point stripped |
+| 3.4 | 34 | decimal point stripped |
+| ~2.1 (from 2.105) | 21 | decimal point stripped |
+| 2.64 (average) | 64 | integer part dropped, kept only the decimal digits |
+| 2.83 | 83 | integer part dropped, kept only the decimal digits |
+
+The model negotiates its way to a perfectly sensible decimal order
+quantity (matching both agents' EOQs closely, e.g. ~4.5 units when both
+EOQs are ~4-5), then asked for "an integer value," concatenates the
+digits either side of the decimal point instead of rounding -- turning a
+sensible ~3-5 unit order into a 10-20x-too-large 21-85 unit one. Both
+agents make this error identically because both see the same transcript
+and compute the same intermediate value (consistent with section (h)'s
+87%-shared-value finding). This single mechanical bug plausibly explains
+nearly all of the remaining bullwhip damage after sections (h)/(h.1)'s
+fixes: not model incompetence, not a reasoning failure, a **formatting**
+failure -- the instruction never actually said "round," only "provide...
+an integer."
+
+**Fix applied:** `prompts.py`'s `NEGOTIATION_FINAL_QUESTION` now explicitly
+instructs rounding to the nearest whole number, with the exact observed
+failure mode given as a negative example ("4.54 rounds to 5, NOT 45 or
+54; 3.4 rounds to 3, NOT 34"). Verification rerun in progress at the time
+of writing -- see the next commit for the confirmed before/after effect
+on the bullwhip number.
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):

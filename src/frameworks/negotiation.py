@@ -54,6 +54,8 @@ class NegotiationState(TypedDict, total=False):
     counter: int
     downstream_order: int
     upstream_order: int
+    downstream_final_reply: str
+    upstream_final_reply: str
     max_order: int
 
 
@@ -93,7 +95,7 @@ def _loop_or_finalise(state: NegotiationState) -> str:
 def _node_final_decision(state: NegotiationState) -> NegotiationState:
     from ..llm_client import parse_order_answer
 
-    def _extract_or_ask_again(client, own_eoq) -> int:
+    def _extract_or_ask_again(client, own_eoq) -> tuple[int, str]:
         # Ask explicitly for the final numeric answer, per Figure 9's
         # "System: What is your final answer?" step. strict_format=True
         # here (unlike the earlier free-form negotiation turns) since this
@@ -112,16 +114,17 @@ def _node_final_decision(state: NegotiationState) -> NegotiationState:
         # shown-work style even here, breaking the bare-[[N]] assumption.
         value = parse_order_answer(reply, state["max_order"])
         if value is not None:
-            return value
+            return value, reply
         # Fall back to the structured single-shot decision call if even the
         # lenient extraction found no number at all.
         import sys
         model = getattr(client, "model", "?")
         print(f"NEGOTIATION_FINAL_FALLBACK model={model} unparseable_reply={reply!r}", file=sys.stderr, flush=True)
-        return client.get_order_decision(final_question, max_order=state["max_order"])
+        value = client.get_order_decision(final_question, max_order=state["max_order"])
+        return value, reply
 
-    state["downstream_order"] = _extract_or_ask_again(state["downstream_client"], state["downstream_eoq"])
-    state["upstream_order"] = _extract_or_ask_again(state["upstream_client"], state["upstream_eoq"])
+    state["downstream_order"], state["downstream_final_reply"] = _extract_or_ask_again(state["downstream_client"], state["downstream_eoq"])
+    state["upstream_order"], state["upstream_final_reply"] = _extract_or_ask_again(state["upstream_client"], state["upstream_eoq"])
     return state
 
 
@@ -197,6 +200,8 @@ def make_negotiation_decision_fn(clients: dict, model_tiers: dict, metric: str, 
                     "transcript": result["transcript"],
                     "downstream_order": result["downstream_order"],
                     "upstream_order": result["upstream_order"],
+                    "downstream_final_reply": result["downstream_final_reply"],
+                    "upstream_final_reply": result["upstream_final_reply"],
                 })
 
         return [final_orders[i] for i in range(env.num_agents)]
