@@ -695,6 +695,49 @@ section (i.1) (all of which were this exact pattern), leaving only the
 one unexplained isolated case (step 190, section (i.1)) as an open
 question.
 
+### (i.3) Verification (2026-09-09/12): third fix confirmed, bullwhip plateaus at a residual baseline rate
+
+Reran the bullwhip-metric shard with the zero-EOQ skip in place.
+Confirmed working exactly as designed: 4 sessions were correctly
+skipped and ordered 0 directly (`skipped_degenerate_zero_eoq: true`),
+with no more step-0/1 "both agents guess 50" cases. Cost kept improving
+(57,409 -> 46,973, continuing the trend across all three fixes:
+150,755 -> 57,409 -> 46,973).
+
+**Bullwhip itself is essentially unchanged** (8.538 -> 8.546). The 3
+remaining large-shared-anchor cases in this run are at entirely different
+steps (6, 169, 197) than any previous run, with normal, non-degenerate
+EOQs -- not a recurrence of the decimal-stripping bug or the zero-EOQ
+case. This matches the one unexplained case from section (i.1) (step
+190): a low, but persistent, ~0.75% (roughly 3/400, consistent across the
+last two independent reruns) rate of sessions where the model cleanly
+outputs `[[N]]` with no format issue, but the value is simply wrong and
+happens to match between both agents, for a reason not yet identified.
+
+**Cumulative summary across all three fixes, same config
+(`negotiation_tool`/large/bullwhip, 200 steps):**
+
+| | Cost | Bullwhip | Large-shared-anchor rate |
+|---|---|---|---|
+| Original (no fixes) | 797,902 | 1.946 | not measured |
+| After context-loss fix (h) | 150,755 | 6.227 | 62/400 (15.5%, spike-to-100 specifically) |
+| After decimal-stripping fix (i) | 57,409 | 8.538 | 3/400 (0.75%) |
+| After zero-EOQ fix (i.2) | 46,973 | 8.546 | 3/400 (0.75%) |
+
+**Assessment:** three real, independently-verified bugs were found and
+fixed, and cost improved by ~17x across the whole investigation
+(797,902 -> 46,973). Bullwhip has not tracked this improvement and has
+plateaued once the fixes ran out of *systematic* causes to remove --
+what's left is a low (~0.75%), so-far-unexplained baseline rate of
+clean-format-but-wrong final answers, against a coefficient-of-variation
+metric mathematically sensitive enough to amplify even that residual
+rate into a large aggregate number. Further reducing this would need
+either a larger sample of these specific residual cases to find a common
+pattern (none has been apparent in the ones inspected so far), or
+accepting this as a genuine, documented behavioral difference between
+Llama 3.1 and the paper's Gemini models rather than a fixable
+implementation bug. Not pursued further as of this writing.
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):
