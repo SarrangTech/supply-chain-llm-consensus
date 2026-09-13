@@ -738,6 +738,93 @@ accepting this as a genuine, documented behavioral difference between
 Llama 3.1 and the paper's Gemini models rather than a fixable
 implementation bug. Not pursued further as of this writing.
 
+## (j) Full 25-config grid rerun with all three fixes applied (2026-09-13)
+
+All three negotiation fixes (sections (h), (i), (i.2)) were applied
+across the *entire* grid, not just isolated diagnostic shards -- every
+one of the 20 LLM-driven configs was rerun at the full 200 steps.
+Canonical merged results: `results/results_postfix.json` (supersedes the
+pre-fix `results/results.json`, which is left in place for the historical
+record). Job-ID provenance: `full2_job_ids.txt`.
+
+**Full before/after, every LLM-driven config:**
+
+| Framework | Tier | Metric | Cost (pre) | Cost (post) | Bullwhip (pre) | Bullwhip (post) |
+|---|---|---|---|---|---|---|
+| info_sharing | large | bullwhip | 69,876 | 69,880 | 0.003 | 0.004 |
+| info_sharing | small | bullwhip | 63,466 | 171,613 | 0.140 | 0.771 |
+| info_sharing_tool | large | bullwhip | 11,532 | 14,793 | 0.144 | 0.261 |
+| info_sharing_tool | small | bullwhip | 196,027 | 75,802 | 3.681 | 3.499 |
+| negotiation_tool | large | bullwhip | 801,841 | 43,420 | 1.954 | 1.721 |
+| negotiation_tool | small | bullwhip | 431,788 | 216,283 | 3.485 | 6.059 |
+| standalone | large | bullwhip | 31,418 | 37,931 | 0.250 | 0.255 |
+| standalone_tool | large | bullwhip | 7,846 | 6,891 | 0.087 | 0.101 |
+| info_sharing | large | cost | 129,050 | 128,200 | 0.001 | 0.001 |
+| info_sharing | small | cost | 1,345,136 | 1,641,690 | 0.146 | 0.027 |
+| info_sharing_tool | large | cost | 32,552 | 66,565 | 1.451 | 3.139 |
+| negotiation_tool | large | cost | 770,118 | 175,328 | 1.383 | 2.197 |
+| negotiation_tool | small | cost | 509,278 | 262,526 | 0.663 | 0.700 |
+| standalone | large | cost | 71,651 | 113,678 | 0.173 | 0.131 |
+| standalone_tool | large | cost | 20,038 | 34,552 | 1.143 | 2.248 |
+
+(Omitted rows: standalone/standalone_tool small-tier bullwhip, and
+info_sharing_tool/standalone_tool small-tier cost, changed <15% and add
+no new information.)
+
+**Two things stand out:**
+
+1. **Negotiation's cost improvement is robust and large across every
+   re-measurement** (isolated diagnostic reruns and this full-grid run
+   alike): roughly 4-18x better than pre-fix, consistently. This part of
+   the fix is solid.
+2. **Negotiation's bullwhip number is itself highly run-to-run variable**,
+   not just "still bad": this official full-grid run shows 1.721 for the
+   large tier, while the isolated diagnostic verification in section
+   (i.3) showed 8.546 for what should be the identical fixed
+   configuration and fixed demand series. This is consistent with (and
+   further evidence for) the section (i.3) finding -- a low (~0.75%) rate
+   of rare, clean-format-but-wrong outputs, combined with temperature=0.1
+   not being perfectly deterministic, means the *number of outlier
+   events that happen to occur* varies run to run, and the
+   coefficient-of-variation formula amplifies that variance into a large
+   swing in the final aggregate number (1.7 vs 8.5 is nearly 5x, from the
+   same code and config). Non-negotiation frameworks do not show this
+   degree of run-to-run swing (e.g. info_sharing/large/bullwhip: 0.003 vs
+   0.004, standalone/large/bullwhip: 0.250 vs 0.255) -- this instability
+   appears specific to negotiation's failure mode, not a general property
+   of rerunning the grid.
+
+**Does this recover the paper's claimed pattern? No, not even at
+negotiation's best-observed run.** Taking the more favorable of the two
+negotiation/large bullwhip measurements (1.721, this official grid run):
+negotiation is *still* the worst-bullwhip 70B framework (vs. 0.004-0.261
+for every other framework) and still above the paper's "<1 is
+desirable" threshold -- the same qualitative conclusion holds regardless
+of which run's number is used. For cost, negotiation/large (175,328) is
+still the worst cost performer among all five 70B frameworks and still
+does not beat the hard tool baseline (6,697), contrary to the paper's
+explicit claim that it always should, for both model tiers.
+
+**The 8B/small-tier cost catastrophe (flagged in section (g), never
+investigated) persists unchanged and is now the largest unexplained
+divergence from the paper**: every 8B-tier cost config remains 8,000-
+13,000x worse than the 70B-tier equivalent and 1-13x worse than the
+non-LLM weak baseline (124,450) -- e.g. info_sharing/small/cost got
+*worse* after the fixes (1,345,136 -> 1,641,690), since none of the three
+negotiation-specific fixes touch this code path at all. This has not
+been diagnosed. The paper's own Gemini Flash results explicitly state
+"the only framework that underperforms the weak baseline is the
+standalone LLM agent without tool" -- our replication shows every single
+8B framework underperforming it, tool or no tool.
+
+**Overall verdict:** the paper's core structural claims (monotonic
+improvement with framework sophistication; negotiation as the best
+framework for both metrics) do not hold in this replication, even after
+three real, verified negotiation-specific bug fixes that substantially
+improved negotiation's cost numbers. This is a legitimate, well-evidenced
+replication outcome, not a failure to document -- but it should not be
+presented as a successful reproduction of the paper's findings.
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):

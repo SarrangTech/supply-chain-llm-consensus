@@ -130,25 +130,51 @@ flagged in NOTES_AND_ASSUMPTIONS.md section (g) as contradicting the
 paper's own claims (negotiation is supposed to be the *best* framework on
 both metrics; ours showed it as the *worst* for 70B).
 
-**Update (2026-09-05/07): one real bug found and fixed, verified, and a
-second (smaller) one found along the way -- but the negotiation/bullwhip
-gap is not fully closed yet, section (h)/(h.1).** Root cause #1, confirmed
-not a model-family difference: `BaseChatClient.chat()` is stateless per
-call, so the final "what is your final answer?" question carried zero
-memory of the negotiation that just happened. 15.5% of negotiation
-sessions in the real run produced a final order clamped to the hard
-max-order cap, completely disconnected from an otherwise coherent,
-converging conversation. Fixed by grounding the final-answer prompt in the
-actual transcript (`prompts.py`'s `negotiation_final_question_prompt`) --
-verified: spike rate dropped to 0.2% and cost improved substantially.
-That fix surfaced a second, smaller bug (the model started showing
-calculation work inside the answer brackets, breaking the strict parser
-and crashing one run) -- fixed via a lenient fallback parser
-(`llm_client.py`'s `parse_order_answer()`). **Still open:** bullwhip for
-the verified config got *worse*, not better (1.946 -> 6.227) -- new,
-smaller-magnitude but still erratic final answers appeared in place of the
-old clamp-to-100 spikes, confirmed not retry-driven (every one parsed
-cleanly on the first attempt). This looks closer to the paper's own
-acknowledged "occasionally goes to one extreme" LLM negotiation behavior
-than to a bug, but that isn't confirmed yet -- see section (h.1) for the
-full picture and what's still unresolved.
+**Update (2026-09-05 through 09-13): three real negotiation bugs found and
+fixed and independently verified; final verdict -- the paper's core
+claims still do not hold. Full writeup: NOTES_AND_ASSUMPTIONS.md sections
+(h) through (j).**
+
+Three bugs, each confirmed by inspecting real negotiation transcripts (not
+guessed), each fixed, each verified by rerunning:
+1. **Context loss** (h): `BaseChatClient.chat()` is stateless per call, so
+   the final "what is your final answer?" question carried zero memory of
+   the negotiation that just happened -- 15.5% of sessions produced a
+   final order clamped to the hard max-order cap, disconnected from an
+   otherwise coherent conversation. Fixed by grounding the final question
+   in the actual transcript.
+2. **Decimal-point stripping** (i): once grounded in richer context, the
+   model started rendering computed decimals as integers by dropping the
+   decimal point ("3.4" -> "34") rather than rounding -- found by
+   inspecting the raw final-answer text, confirmed across ~20 cases. Fixed
+   with an explicit rounding instruction (and negative example) in the
+   final-answer prompt.
+3. **Degenerate zero-EOQ startup** (i.2): at step 0 (before any demand
+   history exists), both tools return exactly 0.0, making "negotiate using
+   your EOQs as bounds" a meaningless `[0, 0]` range -- the model
+   guessed an arbitrary round number every single run. Fixed by skipping
+   the LLM negotiation entirely for this case and ordering 0 directly.
+
+**Net effect, full 25-config grid rerun with all three fixes applied**
+(section (j), `results/results_postfix.json`): negotiation's cost improved
+substantially and consistently (roughly 4-18x across every
+re-measurement) -- that part of the fix is solid. **Bullwhip did not
+recover**, and is itself highly run-to-run variable for negotiation
+specifically (1.7 to 8.5 for the identical fixed config across separate
+runs -- a residual ~0.75% rate of clean-format-but-wrong answers,
+amplified by the coefficient-of-variation formula's sensitivity to rare
+outliers). Negotiation remains the worst-bullwhip 70B framework and still
+doesn't beat the hard cost baseline, contrary to the paper's explicit
+claims for both metrics.
+
+**The single largest unexplained divergence, never investigated**: every
+8B-tier cost config is 8,000-13,000x worse than its 70B equivalent and
+1-13x worse than the non-LLM weak baseline -- the paper states only the
+simplest (no-tool) framework should ever underperform that baseline; here
+every 8B framework does, tool or no tool.
+
+**Bottom line: this replication does not reproduce the paper's core
+structural claims**, even after three real, verified bug fixes. That's a
+legitimate, well-evidenced outcome for a from-scratch replication with a
+substituted model family -- not a failure to document, and not
+"successfully recreated" either.

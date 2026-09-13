@@ -1,0 +1,272 @@
+[
+  {
+    "config": {
+      "metric": "bullwhip",
+      "baseline": "ss_policy",
+      "label": "Restocking Policy (S,s)=(100,60)"
+    },
+    "cost": 124450.0,
+    "bullwhip": 107.85888264960114,
+    "elapsed_sec": 0.004343986511230469
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "baseline": "tool_only",
+      "label": "EOQ tool"
+    },
+    "cost": 11883.0,
+    "bullwhip": 0.013723735303362083,
+    "elapsed_sec": 0.0077266693115234375
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "baseline": "chen_2000",
+      "label": "Chen et al. (2000)"
+    },
+    "cost": 3842.0,
+    "bullwhip": 1.1214243957256804,
+    "elapsed_sec": 0.004660367965698242
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "info_sharing",
+      "model_tier": "large",
+      "label": "info_sharing / large"
+    },
+    "cost": 69880.0,
+    "bullwhip": 0.003964292852801509,
+    "elapsed_sec": 358.56217098236084
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "baseline": "ss_policy",
+      "label": "Restocking Policy (S,s)=(100,60)"
+    },
+    "cost": 124450.0,
+    "bullwhip": 107.85888264960114,
+    "elapsed_sec": 0.005720853805541992
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "baseline": "tool_only",
+      "label": "Demand Forecasting Tool"
+    },
+    "cost": 6697.0,
+    "bullwhip": 0.8213181154820941,
+    "elapsed_sec": 0.032122135162353516
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "info_sharing",
+      "model_tier": "large",
+      "label": "info_sharing / large"
+    },
+    "cost": 128200.0,
+    "bullwhip": 0.0011868705906088713,
+    "elapsed_sec": 472.76943159103394
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "info_sharing",
+      "model_tier": "small",
+      "label": "info_sharing / small"
+    },
+    "cost": 171613.0,
+    "bullwhip": 0.770528112540306,
+    "elapsed_sec": 1429.738526582718
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "info_sharing",
+      "model_tier": "small",
+      "label": "info_sharing / small"
+    },
+    "cost": 1641690.0,
+    "bullwhip": 0.026829346614414634,
+    "elapsed_sec": 1601.5683302879333
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "info_sharing_tool",
+      "model_tier": "large",
+      "label": "info_sharing_tool / large"
+    },
+    "cost": 14793.0,
+    "bullwhip": 0.2611216692539619,
+    "elapsed_sec": 410.62441754341125
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "info_sharing_tool",
+      "model_tier": "large",
+      "label": "info_sharing_tool / large"
+    },
+    "cost": 66565.0,
+    "bullwhip": 3.1394347137714353,
+    "elapsed_sec": 416.6574778556824
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "info_sharing_tool",
+      "model_tier": "small",
+      "label": "info_sharing_tool / small"
+    },
+    "cost": 75802.0,
+    "bullwhip": 3.4986146047835605,
+    "elapsed_sec": 1616.2473645210266
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "info_sharing_tool",
+      "model_tier": "small",
+      "label": "info_sharing_tool / small"
+    },
+    "cost": 1626172.0,
+    "bullwhip": 0.007324362875474991,
+    "elapsed_sec": 1840.809317111969
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "negotiation_tool",
+      "model_tier": "large",
+      "label": "negotiation_tool / large"
+    },
+    "cost": 43420.0,
+    "bullwhip": 1.7207078900775357,
+    "elapsed_sec": 5827.945829868317
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "negotiation_tool",
+      "model_tier": "large",
+      "label": "negotiation_tool / large"
+    },
+    "cost": 175328.0,
+    "bullwhip": 2.1969775442538895,
+    "elapsed_sec": 5863.955719709396
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "negotiation_tool",
+      "model_tier": "small",
+      "label": "negotiation_tool / small"
+    },
+    "cost": 216283.0,
+    "bullwhip": 6.059392316195139,
+    "elapsed_sec": 19733.291762828827
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "negotiation_tool",
+      "model_tier": "small",
+      "label": "negotiation_tool / small"
+    },
+    "cost": 262526.0,
+    "bullwhip": 0.6998544526351065,
+    "elapsed_sec": 24294.99267101288
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "standalone",
+      "model_tier": "large",
+      "label": "standalone / large"
+    },
+    "cost": 37931.0,
+    "bullwhip": 0.2554641280848608,
+    "elapsed_sec": 292.6930181980133
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "standalone",
+      "model_tier": "large",
+      "label": "standalone / large"
+    },
+    "cost": 113678.0,
+    "bullwhip": 0.13092596787949728,
+    "elapsed_sec": 414.57929491996765
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "standalone",
+      "model_tier": "small",
+      "label": "standalone / small"
+    },
+    "cost": 149301.0,
+    "bullwhip": 1.4333062274866382,
+    "elapsed_sec": 1199.2337770462036
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "standalone",
+      "model_tier": "small",
+      "label": "standalone / small"
+    },
+    "cost": 1257570.0,
+    "bullwhip": 0.15473826742291036,
+    "elapsed_sec": 25939.265254497528
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "standalone_tool",
+      "model_tier": "large",
+      "label": "standalone_tool / large"
+    },
+    "cost": 6891.0,
+    "bullwhip": 0.10142605149742413,
+    "elapsed_sec": 320.6522636413574
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "standalone_tool",
+      "model_tier": "large",
+      "label": "standalone_tool / large"
+    },
+    "cost": 34552.0,
+    "bullwhip": 2.247928122014347,
+    "elapsed_sec": 332.30986642837524
+  },
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "standalone_tool",
+      "model_tier": "small",
+      "label": "standalone_tool / small"
+    },
+    "cost": 49022.0,
+    "bullwhip": 2.1364754249655333,
+    "elapsed_sec": 1261.3747205734253
+  },
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "standalone_tool",
+      "model_tier": "small",
+      "label": "standalone_tool / small"
+    },
+    "cost": 1512289.0,
+    "bullwhip": 0.047353639041926535,
+    "elapsed_sec": 1479.304515361786
+  }
+]

@@ -7,7 +7,7 @@
     },
     "cost": 124450.0,
     "bullwhip": 107.85888264960114,
-    "elapsed_sec": 0.01483917236328125
+    "elapsed_sec": 0.014228343963623047
   },
   {
     "config": {
@@ -17,7 +17,7 @@
     },
     "cost": 6697.0,
     "bullwhip": 0.8213181154820941,
-    "elapsed_sec": 0.07151365280151367
+    "elapsed_sec": 0.0596468448638916
   },
   {
     "config": {
@@ -26,8 +26,8 @@
       "model_tier": "small",
       "label": "standalone / small"
     },
-    "cost": 1170046.0,
-    "bullwhip": 0.4058888508636232,
-    "elapsed_sec": 1198.1046435832977
+    "cost": 1257570.0,
+    "bullwhip": 0.15473826742291036,
+    "elapsed_sec": 25939.265254497528
   }
 ]
