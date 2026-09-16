@@ -4,7 +4,7 @@ replicated numbers can be compared line-by-line against Table 1 (main text,
 Section 6.1) and Table 2 (Section 6.2 / Appendix 4), rather than a table of
 our own devising.
 """
-from .config import MODELS
+from .config import MODELS, OLLAMA_MODELS
 
 FRAMEWORK_DISPLAY_NAMES = {
     "standalone": "Standalone LLM",
@@ -14,8 +14,20 @@ FRAMEWORK_DISPLAY_NAMES = {
     "negotiation_tool": "Negotiation + Tool",
 }
 
+# Small-tier model is swappable at runtime (OLLAMA_SMALL_MODEL, see
+# config.py / NOTES_AND_ASSUMPTIONS.md section (l)'s cross-model-family
+# ablation) -- derive the display label from whichever model is actually
+# configured, so table output doesn't silently mislabel a Gemma/Qwen run
+# as Llama.
+_KNOWN_SMALL_MODEL_LABELS = {
+    "llama3.1:8b": "Llama-3.1-8B (Flash-analog)",
+    "gemma2:9b": "Gemma-2-9B (Flash-analog)",
+    "qwen2.5:7b": "Qwen-2.5-7B (Flash-analog)",
+    "qwen2.5:14b": "Qwen-2.5-14B (Flash-analog)",
+}
+
 MODEL_DISPLAY_NAMES = {
-    "small": "Llama-3.1-8B (Flash-analog)",
+    "small": _KNOWN_SMALL_MODEL_LABELS.get(OLLAMA_MODELS["small"], f"{OLLAMA_MODELS['small']} (Flash-analog)"),
     "large": "Llama-3.1-70B (Pro-analog)",
 }
 

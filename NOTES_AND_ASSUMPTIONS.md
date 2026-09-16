@@ -902,6 +902,38 @@ generally struggle with this" from "this specific model/prompt pairing
 fails"), and whether other 8B frameworks (info_sharing, tool-assisted)
 show the same unbounded-growth pattern or a different failure mode.
 
+## (l) Cross-model-family ablation for the "small" tier (2026-09-16, in progress)
+
+Section (k) narrowed the 8B-tier cost catastrophe down to a plausible
+capability/prompt-tuning mismatch rather than a bug, but that's still an
+inference, not a direct test. Rather than accept Llama 3.1 8B as "the"
+Gemini 1.5 Flash analog permanently, this section tests whether the
+paper's claimed patterns (or the failure to reproduce them) are specific
+to that one model choice, or hold across different small-model
+candidates -- a genuinely new experimental axis the paper itself never
+considers (it tests exactly one model family, Gemini, at two sizes, and
+treats its findings as general).
+
+**First candidate: `gemma2:9b`** -- Google's own open-weight model, the
+closest available sibling to Gemini 1.5 Flash (Google has never
+open-sourced Gemini itself). Chosen over a purely-capability-driven pick
+(e.g. Qwen2.5) because it's a more principled analog for *this specific
+paper*: same company, overlapping training practices, and close enough
+in size (9B vs. 8B) to preserve the size-tier gap against the 70B "large"
+tier.
+
+**Implementation**: `config.py`'s `OLLAMA_MODELS["small"]` is now
+overridable via the `OLLAMA_SMALL_MODEL` environment variable (defaults
+to `llama3.1:8b`, so existing behaviour/results are unaffected unless
+explicitly set). `results_table.py`'s model display label now derives
+from whichever model is actually configured, so output tables don't
+silently mislabel a Gemma run as Llama. To run: `export
+OLLAMA_SMALL_MODEL=gemma2:9b` before invoking `run_experiments.py`, or
+set it in the SLURM job script for cluster runs.
+
+Not yet run as of this writing -- see the next commit for the smoke test
+and (if that passes) full-grid results.
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):

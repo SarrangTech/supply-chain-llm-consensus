@@ -60,8 +60,16 @@ MODELS = {
 
 # Ollama uses different model-name strings than OpenRouter for the same
 # underlying weights.
+#
+# ABLATION (2026-09-16, see NOTES_AND_ASSUMPTIONS.md section (l)): the "small"
+# tier's model is overridable via OLLAMA_SMALL_MODEL so the same grid can be
+# rerun against a different candidate model without touching this file --
+# used to test whether the paper's claimed patterns are specific to the
+# Llama 3.1 8B substitution or hold across model families (e.g. Gemma 2 9B,
+# Google's own open model and the closest available sibling to Gemini 1.5
+# Flash). Unset by default, so normal runs are unaffected.
 OLLAMA_MODELS = {
-    "small": "llama3.1:8b",
+    "small": os.environ.get("OLLAMA_SMALL_MODEL", "llama3.1:8b"),
     "large": "llama3.1:70b",
 }
 
