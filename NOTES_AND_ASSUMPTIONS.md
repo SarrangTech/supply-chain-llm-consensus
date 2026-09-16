@@ -825,6 +825,83 @@ improved negotiation's cost numbers. This is a legitimate, well-evidenced
 replication outcome, not a failure to document -- but it should not be
 presented as a successful reproduction of the paper's findings.
 
+## (k) Root cause of the 8B-tier cost catastrophe: unbounded inventory growth, not a bug (2026-09-14/16)
+
+The 8B ("small") tier's cost-metric results have been catastrophic
+(500K-1.6M vs. 124,450 for the non-LLM weak baseline) since the first
+full grid run in section (g), never investigated until now. Checked
+whether this was a formatting/retry issue like the negotiation bugs
+first: **zero `RETRY` lines** across all five 8B cost-metric shards'
+logs from the section (j) full-grid run -- the model produces clean,
+well-formatted `[[N]]` answers every time. This rules out a parsing bug;
+the decisions themselves are simply bad.
+
+Pulled real per-step order/inventory data for `standalone`/small/cost via
+`--include-histories` (`results/diagnostic/diag_standalone_small_cost.json`).
+Finding: **all three agents show unbounded, essentially monotonic
+inventory growth across the full 200 steps**, against a customer demand
+of only 0-20 units/step:
+
+| Agent | Inventory @ step 0 | @ step 50 | @ step 100 | @ step 150 | @ step 199 |
+|---|---|---|---|---|---|
+| 0 | 10 | 2,334 | 4,938 | 7,383 | 10,077 |
+| 1 | 20 | 375 | 775 | 1,050 | 1,175 |
+| 2 | 20 | 255 | 495 | 970 | 1,070 |
+
+Agent 0 (retailer) is the worst: roughly 1000x inventory growth over the
+run, with backlog staying at 0 throughout (demand is always over-met, not
+under-met). By the last 20 steps its ordering has locked into a rigid,
+almost mechanical alternation between the hard max-order cap (100) and 0
+every other step -- with inventory still climbing throughout (e.g. steps
+180-199: order 100, 0, 100, 0, ... while inventory rises from 9,123 to
+10,077). The model has the actual inventory level in its prompt every
+single step (`prompts.py`'s `_p3`: `"Inventory level: {obs['inventory']}"`)
+and is simply not using it to correct course -- this is not a missing-
+information bug, the correct data is right there.
+
+**A related, separate finding surfaced while investigating this**: this
+specific shard (`standalone`/small/cost) ran anomalously slowly --
+44-62 seconds per LLM call, vs. the ~7 seconds expected from the
+established AVX512 Cascade Lake benchmark (12.34 tok/s, section (f)) --
+consistent across two independent runs (7h12m in the full grid, 7h15m in
+this diagnostic rerun, vs. ~20-30 minutes for sibling small-tier shards).
+Most likely explanation, tying back to an already-documented Llama
+quirk (`llm_client.py`'s module docstring): Llama 3.1 tends to emit
+verbose step-by-step reasoning before reaching a bracketed answer; if
+this cost-accounting task elicits close-to-full-budget (90 token)
+generations on every call while other configs terminate sooner, that
+alone explains both the slowdown and hints at *why* the decisions are
+bad -- extended, apparently unhelpful reasoning rather than a quick,
+well-calibrated answer. Not confirmed with raw response text (no
+transcript-capture instrumentation exists for `standalone.py`, unlike
+`negotiation.py`); would need equivalent instrumentation to confirm
+directly.
+
+**Assessment: this is not an implementation bug**, unlike the three
+negotiation fixes in sections (h)-(i.2). The model is given correct,
+complete information every step and simply fails to use it to prevent
+runaway inventory accumulation. This is consistent with, and strong
+direct evidence for, the two structural risk factors flagged before any
+of this investigation began (section (b)):
+1. Llama 3.1 8B Instruct is very likely not a fair capability match for
+   Gemini 1.5 Flash despite both being their family's "small" tier --
+   Google has never disclosed Flash's parameter count, and it is a
+   commercially RLHF'd model that plausibly has far more effective
+   capacity for this kind of multi-step numerical reasoning than an
+   open 8B model.
+2. The paper's own text states its prompts were "optimized for the
+   smaller model, Gemini Flash, using manual optimization techniques" --
+   this codebase's prompts reconstruct the paper's *described* structure
+   but cannot reproduce empirical tuning that targeted a model this
+   replication doesn't have access to, on a different model than the one
+   it was tuned for.
+
+Not yet checked: whether the 70B tier shows the same inventory-tracking
+failure at a smaller magnitude (would help distinguish "small models
+generally struggle with this" from "this specific model/prompt pairing
+fails"), and whether other 8B frameworks (info_sharing, tool-assisted)
+show the same unbounded-growth pattern or a different failure mode.
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):
