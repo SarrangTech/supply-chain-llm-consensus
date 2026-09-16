@@ -178,3 +178,17 @@ structural claims**, even after three real, verified bug fixes. That's a
 legitimate, well-evidenced outcome for a from-scratch replication with a
 substituted model family -- not a failure to document, and not
 "successfully recreated" either.
+
+**Update (2026-09-14/16): root cause of the 8B-tier catastrophe found --
+not a bug, section (k).** Ruled out formatting first (zero retries across
+every 8B cost shard's logs). Pulled real per-step data instead: all three
+agents show unbounded inventory growth across the full 200 steps (agent 0:
+10 -> 10,077 units, ~1000x) against demand of only 0-20 units/step, with
+backlog at 0 throughout -- the model has its own current inventory level
+in its prompt every step and simply never uses it to stop ordering. Not a
+missing-information bug. Consistent with the two risk factors flagged
+before this investigation began (section (b)): Llama 3.1 8B is likely not
+a fair capability match for the undisclosed, heavily-tuned "Gemini 1.5
+Flash," and the paper's prompts were empirically optimized for Flash
+specifically, a process this replication cannot reproduce for a different
+model it was never tuned against.
