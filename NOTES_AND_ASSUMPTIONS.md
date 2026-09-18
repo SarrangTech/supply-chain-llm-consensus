@@ -931,8 +931,44 @@ silently mislabel a Gemma run as Llama. To run: `export
 OLLAMA_SMALL_MODEL=gemma2:9b` before invoking `run_experiments.py`, or
 set it in the SLURM job script for cluster runs.
 
-Not yet run as of this writing -- see the next commit for the smoke test
-and (if that passes) full-grid results.
+### (l.1) Results: 20-step smoke test + full 200-step run, `standalone`/small/cost (2026-09-17/18)
+
+**20-step smoke test** (`results/diagnostic/gemma_smoke_standalone_small_cost.json`):
+already qualitatively different from Llama at the same checkpoint --
+agents holding steady orders in the 10-20 range (tracking the 0-20 demand
+range) instead of escalating toward extremes.
+
+**Full 200-step run** (`results/diagnostic/gemma_full_standalone_small_cost.json`),
+same exact config as section (k)'s Llama result, direct comparison:
+
+| | Llama 3.1 8B (section (k)) | Gemma 2 9B | Change |
+|---|---|---|---|
+| Cost | 1,266,014 | 327,406 | ~3.9x better |
+| Bullwhip | 0.133 | 0.371 | worse, still low |
+| Agent 0 inventory @ step 199 | 10,077 (~1000x growth) | 615 (~61x growth) | ~16x less runaway |
+| Wall-clock | ~7h12m | 36m (2,159s) | ~12x faster |
+| Late-run order pattern | Rigid 100/0 alternation | Steady 2-3/step | Qualitatively different |
+
+Gemma is not "fixed" -- inventory is still climbing (not fully
+stabilized) and cost remains well above both the non-LLM weak baseline
+(124,450) and the 70B tier's result for this same config (113,678). But
+the *failure mode* is completely different: Gemma converges to a low,
+stable order rate instead of oscillating between 0 and the hard order
+cap, and the ~12x speedup is consistent with it not exhibiting Llama's
+verbose-rambling-before-answering tendency (section (k)) to nearly the
+same degree.
+
+**This decisively answers the question section (l) set out to test**:
+the 8B-tier cost catastrophe in sections (g)/(k) was a property of the
+specific Llama 3.1 8B substitution, not a general property of "small"
+open-weight models. Model choice matters enormously for whether this
+paper's methodology reproduces sensible behavior at the small-model tier.
+
+Not yet done: the other four frameworks and the bullwhip metric haven't
+been rerun with Gemma yet, so this is one data point, not a full-grid
+confirmation. A full 20-shard Gemma grid (mirroring section (j)'s
+Llama/70B grid) would be needed to make a complete Table 1/Table 2
+comparison.
 
 ## How to actually run this
 
