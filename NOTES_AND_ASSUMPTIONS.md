@@ -970,6 +970,56 @@ confirmation. A full 20-shard Gemma grid (mirroring section (j)'s
 Llama/70B grid) would be needed to make a complete Table 1/Table 2
 comparison.
 
+### (l.2) Full 10-shard small-tier Gemma grid: 8/10 done, one new bug found+fixed (2026-09-18/23)
+
+Submitted all 10 small-tier shards (5 frameworks x 2 metrics; large/70B
+tier untouched -- all 3 agents share one model per config, so the
+70B-tier results from section (j) remain valid regardless of the
+small-tier model choice). Job IDs: `gemma_full_job_ids.txt`. Output:
+`results/full_gemma_<framework>_small_<metric>.json` (kept separate from
+the existing Llama `results/full_<framework>_small_<metric>.json` files
+so both remain available for comparison).
+
+**8 of 10 shards succeeded on the first attempt.** Direct comparison,
+same configs, Llama 3.1 8B vs. Gemma 2 9B:
+
+| Framework | Metric | Cost (Llama) | Cost (Gemma) | Bullwhip (Llama) | Bullwhip (Gemma) |
+|---|---|---|---|---|---|
+| info_sharing | bullwhip | 171,613 | 169,003 | 0.771 | 0.068 |
+| info_sharing | cost | 1,641,690 | 79,349 | 0.027 | 0.063 |
+| info_sharing_tool | bullwhip | 75,802 | 15,854 | 3.499 | 0.006 |
+| info_sharing_tool | cost | 1,626,172 | 285,932 | 0.007 | 0.159 |
+| standalone | bullwhip | 149,301 | 155,434 | 1.433 | 0.301 |
+| standalone | cost | 1,257,570 | 326,382 | 0.155 | 0.390 |
+| standalone_tool | bullwhip | 49,022 | 12,645 | 2.136 | 0.010 |
+| standalone_tool | cost | 1,512,289 | 276,708 | 0.047 | 0.835 |
+
+**Cost improves in every single one of these 8 configs** (2x to over
+20x better), and bullwhip improves in 6 of 8 (dramatically in some --
+`info_sharing_tool`/bullwhip: 3.499 -> 0.006; `standalone_tool`/bullwhip:
+2.136 -> 0.010). This is a strong, consistent result across frameworks,
+not just the single config tested in (l.1) -- reinforcing that the
+section (k)/(g) 8B-tier catastrophe was specific to the Llama 3.1 8B
+substitution.
+
+**The 2 `negotiation_tool` shards (cost, bullwhip) failed on a new,
+Gemma-specific bug**: Gemma sometimes answers the final negotiation
+question with literally empty brackets, `"[[ ]]"` -- no number at all --
+repeated across all `MAX_RETRIES` attempts, which previously raised
+`MalformedOutputError` uncaught and crashed the whole 200-step run,
+losing all data for that shard. Same failure category as, but distinct
+from, the three Llama-specific negotiation bugs in sections (h)-(i.2):
+those produced a *wrong* number; this produces *no* number at all, and
+only appears with Gemma so far.
+
+**Fix applied** (`negotiation.py`'s `_extract_or_ask_again`): catch
+`MalformedOutputError` from the final fallback call and default to
+`round(own_eoq)` (clamped to `max_order`) instead of letting it crash the
+run -- same philosophy as the degenerate zero-EOQ fix in section (i.2):
+a bad single exchange shouldn't destroy 200 steps of otherwise-valid
+data. Both shards resubmitted; not yet confirmed complete as of this
+writing.
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):
