@@ -118,9 +118,22 @@ def _node_final_decision(state: NegotiationState) -> NegotiationState:
         # Fall back to the structured single-shot decision call if even the
         # lenient extraction found no number at all.
         import sys
+        from ..llm_client import MalformedOutputError
         model = getattr(client, "model", "?")
         print(f"NEGOTIATION_FINAL_FALLBACK model={model} unparseable_reply={reply!r}", file=sys.stderr, flush=True)
-        value = client.get_order_decision(final_question, max_order=state["max_order"])
+        try:
+            value = client.get_order_decision(final_question, max_order=state["max_order"])
+        except MalformedOutputError as e:
+            # New failure mode observed with Gemma 2 9B (see
+            # NOTES_AND_ASSUMPTIONS.md section (l.2)): literally empty
+            # brackets, "[[ ]]", with no number at all, repeated across all
+            # MAX_RETRIES attempts. Previously uncaught, so this crashed the
+            # whole 200-step run and lost all data for the config. Same
+            # philosophy as the degenerate zero-EOQ fix in section (i.2):
+            # fall back to a sensible default (the agent's own EOQ, rounded)
+            # rather than losing an entire run over one bad exchange.
+            print(f"NEGOTIATION_FINAL_HARD_FALLBACK model={model} error={e} -- defaulting to round(own_eoq)", file=sys.stderr, flush=True)
+            value = int(max(0, min(round(own_eoq), state["max_order"])))
         return value, reply
 
     state["downstream_order"], state["downstream_final_reply"] = _extract_or_ask_again(state["downstream_client"], state["downstream_eoq"])
