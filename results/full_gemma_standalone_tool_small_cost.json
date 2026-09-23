@@ -1,0 +1,13 @@
+[
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "standalone_tool",
+      "model_tier": "small",
+      "label": "standalone_tool / small"
+    },
+    "cost": 276708.0,
+    "bullwhip": 0.8348585643708136,
+    "elapsed_sec": 2498.438184738159
+  }
+]

@@ -1,0 +1,13 @@
+[
+  {
+    "config": {
+      "metric": "cost",
+      "framework": "info_sharing_tool",
+      "model_tier": "small",
+      "label": "info_sharing_tool / small"
+    },
+    "cost": 285932.0,
+    "bullwhip": 0.15927429932474582,
+    "elapsed_sec": 3790.764240026474
+  }
+]
