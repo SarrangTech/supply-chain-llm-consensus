@@ -1020,6 +1020,109 @@ a bad single exchange shouldn't destroy 200 steps of otherwise-valid
 data. Both shards resubmitted; not yet confirmed complete as of this
 writing.
 
+## (m) Status audit against five specific questions (2026-09-29)
+
+Answered by checking actual saved result files, job logs, and git
+history -- not inferred from job submission. Each item: **done**, **in
+progress**, or **not started**, with the evidence.
+
+**1. The two Gemma negotiation shards blocked on the empty-bracket
+bug (l.2) -- done.** Resubmitted as jobs 10628739 (cost) and 10628740
+(bullwhip) after the earlier resubmission (10548192/93) hit a *different*
+failure (a 600s read-timeout on the first call, cold model load taking
+longer than the health-check accounted for -- fixed by adding an explicit
+warm-up `/api/chat` call to the job script before the real run starts).
+Both completed cleanly this time:
+
+| Shard | Elapsed | Cost | Bullwhip |
+|---|---|---|---|
+| `negotiation_tool`/small/cost (Gemma) | 6h20m | 237,875 | 1.337 |
+| `negotiation_tool`/small/bullwhip (Gemma) | 6h17m | 232,928 | 8.691 |
+
+The empty-bracket-class fix is confirmed working, not just deployed: the
+cost shard's log shows the fallback path actually fired --
+`NEGOTIATION_FINAL_FALLBACK` followed by `NEGOTIATION_FINAL_HARD_FALLBACK
+... defaulting to round(own_eoq)` -- for a reply of `'[[Upstream does not
+have enough information to determine the percentage of total demand
+their business accounts for. ]]'` (brackets present, no number -- the
+same failure *class* as the literal `"[[ ]]"` case that originally
+crashed the job, handled by the same fix). The job continued and
+completed instead of crashing. The bullwhip shard's log shows zero
+fallback triggers at all (clean run). Files:
+`results/full_gemma_negotiation_tool_small_{cost,bullwhip}.json`.
+
+This completes the 10-shard small-tier Gemma grid (section (l.2) had
+8/10; this adds the last 2). A merged Table 1/Table 2 comparison for
+Gemma across all 5 frameworks has not yet been built -- the per-shard
+numbers exist and are checked in, but no merge/dedupe pass (the same step
+section (j) did for the Llama grid) has been run over the Gemma files
+yet.
+
+**2. Gemma at the 70B/"large" tier -- not started.** Verified directly:
+`OLLAMA_SMALL_MODEL` only overrides `OLLAMA_MODELS["small"]`;
+`OLLAMA_MODELS["large"]` is hardcoded to `"llama3.1:70b"` in `config.py`
+with no override mechanism. No `results/full_gemma_*_large_*.json` files
+exist anywhere (checked). The ablation in section (l) only ever concerned
+the small tier by design (see section (l)'s own rationale) -- this was
+never attempted, not attempted-and-failed.
+
+**3. Repeated-seed reruns for `negotiation_tool`/large, either metric,
+beyond the two cited in (i.3)/(j) -- yes, more exist than those two, but
+not framed as a distribution and shouldn't be treated as one (n=2 at
+most per fix-state, no seed control).** Full inventory, every saved file,
+by fix-state (determined from git blame / commit history, not
+filenames):
+
+| Fix-state | Metric | Files (cost / bullwhip) |
+|---|---|---|
+| Pre-fix baseline | bullwhip | `results.json`: 801,841/1.954; `diag_negotiation_tool_bullwhip.json`: 797,902/1.946 (2 points) |
+| Pre-fix baseline | cost | `results.json`: 770,118/1.383; `diag_negotiation_tool_cost.json`: 778,061/1.349 (2 points) |
+| H only (context-grounding; parser-leniency fix also present as a non-decision-altering robustness companion) | bullwhip | `diag_..._postfix.json`: 150,755/6.227; `diag_..._rawtext.json`: 171,354/6.092 (2 points) |
+| H only | cost | **none exist** -- the only attempt at this fix-state crashed on the decimal-stripping bug before it was diagnosed, and no output file was written |
+| H+I (+ rounding instruction) | bullwhip | `diag_..._roundfix.json`: 57,409/8.538 (1 point only) |
+| H+I | cost | `diag_..._cost_postfix2.json`: 333,060/1.069 (1 point only) |
+| H+I+I.2 (all three, final state) | bullwhip | `diag_..._zerofix.json`: 46,973/8.546; `results_postfix.json`/`full_negotiation_tool_large_bullwhip.json`: 43,420/1.721 (2 points -- these are the two already cited in (i.3)/(j)) |
+| H+I+I.2 | cost | `results_postfix.json`/`full_negotiation_tool_large_cost.json`: 175,328/2.197 (1 point only) |
+
+Do not read the 2-point bullwhip series (baseline: 1.954/1.946; H-only:
+6.227/6.092; final: 8.546/1.721) as a stable trend or a validated
+variance estimate -- n=2 with no controlled seed is not a distribution,
+temperature is 0.1 not 0, and the final-state pair alone spans 43,420-
+801,841 in cost and 1.721-8.546 in bullwhip depending on which run you
+pick. It only supports the qualitative point already made in (i.3): the
+bullwhip metric is itself highly run-to-run variable for this framework.
+
+**4. Qwen2.5 or any third model family -- not started.** `grep -rli qwen`
+across the repo (local and cluster) returns exactly two source hits:
+`NOTES_AND_ASSUMPTIONS.md`'s own prose discussing it as a candidate, and
+`results_table.py`'s `_KNOWN_SMALL_MODEL_LABELS` dict, which includes a
+label mapping for `qwen2.5:7b`/`qwen2.5:14b` purely so the display table
+wouldn't mislabel it *if* someone ran it later -- this is unused
+scaffolding, not evidence of a run. No Qwen model has been pulled on the
+cluster (`ollama list` doesn't show it), no job script references it, and
+no result file exists for it.
+
+**5. An isolated memory-only ablation (H alone, I and I.2 held at their
+pre-fix state) -- not started as a deliberate, controlled experiment.
+Incidental, uncontrolled data that happens to sit at that exact
+fix-state exists for bullwhip only, not cost.** The "H only" row in the
+table under item 3 (`diag_..._postfix.json` and `diag_..._rawtext.json`,
+150,755-171,354 cost / 6.092-6.227 bullwhip) is literally the fix-state
+the question describes, and was captured incidentally while verifying
+fix H before I or I.2 existed yet -- but: (a) it was never set up as a
+deliberate ablation (no job script or commit frames it that way), (b) it
+implicitly also carries the parser-leniency companion fix from `llm_client
+.py` bundled in with "H," which was not independently toggled off to
+check whether it alone changes anything, (c) no cost-metric data exists
+at this exact fix-state at all (the only attempt crashed), so no
+before/after cost comparison for "memory alone" can be made, and (d) at
+n=2 with no seed control, even the bullwhip pair available doesn't
+support a clean effect-size claim on its own. A real answer to "what is
+memory's isolated effect" would need a dedicated run: revert `prompts.py`
+to the pre-(i) rounding instruction and revert `negotiation.py`'s
+zero-EOQ skip from (i.2), keep only the (h) transcript-grounding change,
+and run both metrics fresh. Not done.
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):
