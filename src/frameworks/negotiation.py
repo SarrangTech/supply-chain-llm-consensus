@@ -36,9 +36,23 @@ from typing import TypedDict
 
 from langgraph.graph import StateGraph, START, END
 
+import os
+
 from ..config import FIXED_PARAMS
-from ..prompts import negotiation_intro_prompt, negotiation_turn_prompt, negotiation_final_question_prompt
+from ..prompts import (
+    NEGOTIATION_FINAL_QUESTION,
+    negotiation_intro_prompt,
+    negotiation_turn_prompt,
+    negotiation_final_question_prompt,
+)
 from ..tools import demand_forecast_tool, eoq_tool
+
+# RQ2 isolated memory-only ablation (2026-09-29, NOTES_AND_ASSUMPTIONS.md
+# section (n)): reverts ONLY the section (h) transcript-grounding fix,
+# leaving the decimal-rounding fix (i) and zero-EOQ skip (i.2) in place, to
+# isolate memory as the single variable against the existing all-fixes-on
+# results. Off by default -- normal runs are unaffected.
+DISABLE_TRANSCRIPT_GROUNDING = os.environ.get("DISABLE_TRANSCRIPT_GROUNDING", "") == "1"
 
 NUM_ITER = FIXED_PARAMS["num_negotiation_iters"]
 
@@ -106,7 +120,12 @@ def _node_final_decision(state: NegotiationState) -> NegotiationState:
         # section (g)) -- BaseChatClient.chat() has no memory between calls,
         # so without this the model answered blind, disconnected from
         # whatever it just negotiated.
-        final_question = negotiation_final_question_prompt(state["transcript"], own_eoq)
+        if DISABLE_TRANSCRIPT_GROUNDING:
+            # Reproduces the pre-(h) ungrounded question exactly, for the
+            # isolated memory-only ablation (section (n)).
+            final_question = NEGOTIATION_FINAL_QUESTION + f" (Your EOQ was {own_eoq:.2f}.)"
+        else:
+            final_question = negotiation_final_question_prompt(state["transcript"], own_eoq)
         reply = client.chat(final_question, strict_format=True)
         # parse_order_answer (section (h)) tolerates reasoning shown inside
         # the brackets -- grounding the question in the transcript measurably

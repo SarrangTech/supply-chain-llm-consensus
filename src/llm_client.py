@@ -35,6 +35,7 @@ import requests
 _NUM_THREAD = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1))
 
 from .config import (
+    EXPERIMENT_SEED,
     FIXED_PARAMS,
     OLLAMA_BASE_URL,
     OPENROUTER_API_KEY_ENV_VAR,
@@ -208,6 +209,11 @@ class OllamaClient(BaseChatClient):
                     "temperature": FIXED_PARAMS["temperature"],
                     "num_predict": FIXED_PARAMS["max_output_tokens"],
                     "num_thread": _NUM_THREAD,
+                    # RQ3/RQ5 (2026-09-29): threaded from EXPERIMENT_SEED so
+                    # repeated reruns can actually vary LLM sampling in a
+                    # controlled way instead of relying on unseeded
+                    # process-time randomness.
+                    "seed": EXPERIMENT_SEED,
                     # Ollama otherwise defaults num_ctx to the model's full
                     # trained context (131072 for Llama 3.1), which on the
                     # 70B/H200 test bloated the KV cache to ~40GB and made

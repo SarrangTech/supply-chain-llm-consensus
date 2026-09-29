@@ -20,7 +20,7 @@ from .baselines import (
     eoq_tool_only_decision,
     ss_policy_decision,
 )
-from .config import BACKENDS, FIXED_PARAMS, MODELS, OLLAMA_MODELS
+from .config import BACKENDS, EXPERIMENT_SEED, FIXED_PARAMS, MODELS, OLLAMA_MODELS
 from .demand import MJDParams, generate_mjd_demand
 from .environment import SequentialSupplyChainEnv
 from .frameworks.info_sharing import make_info_sharing_decision_fn
@@ -30,7 +30,7 @@ from .metrics import global_bullwhip, global_cost
 
 
 def _new_env(demand=None):
-    demand = demand if demand is not None else generate_mjd_demand(FIXED_PARAMS["num_steps"], MJDParams())
+    demand = demand if demand is not None else generate_mjd_demand(FIXED_PARAMS["num_steps"], MJDParams(seed=EXPERIMENT_SEED))
     return SequentialSupplyChainEnv(
         num_agents=FIXED_PARAMS["num_agents"],
         customer_demand=demand,
@@ -237,7 +237,7 @@ def run_full_grid(
     # customer demand series per run). Deterministic (fixed seed), so this
     # is identical across separate shard processes without needing to share
     # any state between them.
-    demand = generate_mjd_demand(FIXED_PARAMS["num_steps"], MJDParams())
+    demand = generate_mjd_demand(FIXED_PARAMS["num_steps"], MJDParams(seed=EXPERIMENT_SEED))
 
     all_results = []
     for config in (grid if grid is not None else build_full_grid()):

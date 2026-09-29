@@ -1123,6 +1123,77 @@ to the pre-(i) rounding instruction and revert `negotiation.py`'s
 zero-EOQ skip from (i.2), keep only the (h) transcript-grounding change,
 and run both metrics fresh. Not done.
 
+## (n) 48-hour push: code changes, local analysis (done), cluster jobs (in progress) (2026-09-29)
+
+**Code changes made and pushed** (all env-var-driven, off by default, existing behavior unaffected unless explicitly set):
+- `config.py`: `OLLAMA_MODELS["large"]` now overridable via `OLLAMA_LARGE_MODEL` (mirrors the existing small-tier override), enabling RQ1's large-tier ablation.
+- `config.py`/`experiment_runner.py`/`llm_client.py`: new `EXPERIMENT_SEED` env var (default 13, matching the prior hardcoded default) now threads into both `demand.py`'s `MJDParams(seed=...)` and the Ollama request's `options.seed`, so repeated runs can actually vary demand *and* LLM sampling in a controlled way instead of relying on unseeded process-time randomness -- required for RQ3/RQ5's seeded reruns.
+- `negotiation.py`: new `DISABLE_TRANSCRIPT_GROUNDING` env var reverts *only* the section (h) fix (reproduces the exact pre-fix ungrounded final question) while leaving the decimal-rounding (i) and zero-EOQ (i.2) fixes in place -- isolates memory as a single variable for RQ2, rather than the entangled three-fix comparison used everywhere else in this document.
+
+**Item 5 (transcript classification) -- done.** Classifier script (heuristic:
+breakdown = hit the 100 hard-order cap, or an order >3x the larger EOQ+5;
+converged = final orders within max(1, 15% of their mean) of each other;
+one_sided = neither). Applied to every Llama transcript file that exists
+(7 files, n=400 each, spanning every fix-state from pre-fix through all-
+three-fixes):
+
+| File (fix-state) | Converged | One-sided | Breakdown |
+|---|---|---|---|
+| bullwhip, pre-fix | 25.2% | 58.0% | 16.8% |
+| bullwhip, H only (postfix) | 89.5% | 0.0% | 10.5% |
+| bullwhip, H only (rawtext) | 86.5% | 1.0% | 12.5% |
+| bullwhip, H+I (roundfix) | 97.5% | 0.2% | 2.2% |
+| bullwhip, H+I+I.2 (zerofix) | 98.0% | 1.0% | 1.0% |
+| cost, pre-fix | 18.5% | 55.0% | 26.5% |
+| cost, H+I (postfix2) | 83.2% | 9.8% | 7.0% |
+| **Llama overall, all fix-states pooled, n=2800** | **71.2%** | **17.9%** | **10.9%** |
+
+**Gemma: cannot be classified -- no transcript data exists.** None of the
+Gemma negotiation job scripts (section (l.2), or the RQ1 small-tier Qwen
+jobs just submitted) passed `--include-transcripts`. This is a real gap,
+not an oversight being hidden: a per-model breakdown was requested and
+only half of it (Llama) is answerable from existing data.
+
+**Item 6 (effort-vs-benefit) -- done.** Real `elapsed_sec` and cost from
+`results_postfix.json` (70B tier, cost metric, all-fixes-applied state):
+
+| Framework | Elapsed (s) | x standalone | Cost | Cost x standalone |
+|---|---|---|---|---|
+| standalone_tool | 332.3 | 0.80x | 34,552 | 0.30x |
+| standalone | 414.6 | 1.00x | 113,678 | 1.00x |
+| info_sharing_tool | 416.7 | 1.01x | 66,565 | 0.59x |
+| info_sharing | 472.8 | 1.14x | 128,200 | 1.13x |
+| negotiation_tool | 5,864.0 | **14.14x** | 175,328 | **1.54x** |
+
+Plain statement: negotiation's ~14x wall-clock overhead is **not**
+justified by its outcome. It is both the slowest framework by a wide
+margin and produces worse cost than standalone (54% worse), while
+standalone_tool achieves the best cost of any framework (70% better than
+standalone) at *less* time than standalone itself. The tool-only baseline
+dominates negotiation on both axes simultaneously.
+
+**Items 1-4, 7 -- in progress, submitted, not confirmed complete.**
+Following item 8's own rule (do not report a job as done because it was
+submitted): all 17 jobs (3 RQ1-small/Qwen CPU jobs, 2 RQ1-large/Gemma27B
+GPU jobs, 2 RQ2 memory-ablation GPU jobs, 10 RQ3/RQ5 seeded-rerun GPU
+jobs) were submitted via a detached driver process (`submit_48h.sh`,
+launched with `nohup ... & disown` directly on the login node so it
+survives independent of any single SSH session) that waited for
+`gemma2:27b`/`qwen2.5:7b` to finish pulling (job 10686615) before
+submitting, then submits the 8 GPU jobs through the same submit-retry-on-
+cap pattern used throughout this document. Job-ID tracking file:
+`rq_48h_job_ids.txt` on the cluster (not yet populated as of this
+writing -- the pull job was still in progress). **None of these 17 have
+a saved result file yet.** Item 7 (section (n) skeleton) is this section
+itself, being filled in as data arrives rather than written blank.
+
+**Explicitly not done, do not infer otherwise:** items 8-10 (final
+consolidation, explicit under-support flags, single final commit) are
+blocked on items 1-4 actually finishing -- cluster wall-clock cannot be
+compressed. The next session/turn should check `rq_48h_job_ids.txt` and
+`sacct` for real job states, pull whichever result files exist, and
+complete items 8-10 with only confirmed data.
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):

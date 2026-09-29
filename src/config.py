@@ -27,6 +27,13 @@ FIXED_PARAMS = {
     "num_steps": 200,
 }
 
+# RQ3/RQ5 seed-controlled reruns (2026-09-29): overridable via EXPERIMENT_SEED
+# so repeated runs can actually vary demand + LLM sampling instead of relying
+# on unseeded process-time randomness (which isn't a controlled experiment).
+# Default (13) matches demand.py's prior hardcoded default -- existing
+# single-seed results are unaffected unless this is explicitly set.
+EXPERIMENT_SEED = int(os.environ.get("EXPERIMENT_SEED", 13))
+
 # (S, s) restocking policy baseline (Section 5.1): reorder up to S when
 # inventory falls below s.
 SS_POLICY = {"S": 100, "s": 60}
@@ -70,7 +77,7 @@ MODELS = {
 # Flash). Unset by default, so normal runs are unaffected.
 OLLAMA_MODELS = {
     "small": os.environ.get("OLLAMA_SMALL_MODEL", "llama3.1:8b"),
-    "large": "llama3.1:70b",
+    "large": os.environ.get("OLLAMA_LARGE_MODEL", "llama3.1:70b"),
 }
 
 # FURTHER DEVIATION (2026-08-30, explicit, user-approved): moved from the
