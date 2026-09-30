@@ -1,0 +1,13 @@
+[
+  {
+    "config": {
+      "metric": "bullwhip",
+      "framework": "negotiation_tool",
+      "model_tier": "large",
+      "label": "negotiation_tool / large"
+    },
+    "cost": 42233.0,
+    "bullwhip": 8.867158000319671,
+    "elapsed_sec": 5681.772909164429
+  }
+]

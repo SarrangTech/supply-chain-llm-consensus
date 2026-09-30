@@ -1172,29 +1172,208 @@ standalone_tool achieves the best cost of any framework (70% better than
 standalone) at *less* time than standalone itself. The tool-only baseline
 dominates negotiation on both axes simultaneously.
 
-**Items 1-4, 7 -- in progress, submitted, not confirmed complete.**
-Following item 8's own rule (do not report a job as done because it was
-submitted): all 17 jobs (3 RQ1-small/Qwen CPU jobs, 2 RQ1-large/Gemma27B
-GPU jobs, 2 RQ2 memory-ablation GPU jobs, 10 RQ3/RQ5 seeded-rerun GPU
-jobs) were submitted via a detached driver process (`submit_48h.sh`,
-launched with `nohup ... & disown` directly on the login node so it
-survives independent of any single SSH session) that waited for
-`gemma2:27b`/`qwen2.5:7b` to finish pulling (job 10686615) before
-submitting, then submits the 8 GPU jobs through the same submit-retry-on-
-cap pattern used throughout this document. Job-ID tracking file:
-`rq_48h_job_ids.txt` on the cluster (not yet populated as of this
-writing -- the pull job was still in progress). **None of these 17 have
-a saved result file yet.** Item 7 (section (n) skeleton) is this section
-itself, being filled in as data arrives rather than written blank.
+**Items 1-4, 7 -- done, all 17 target result files confirmed present and
+non-empty (plus one bonus file, see below).** The cluster hit two real
+infrastructure problems along the way (both already fixed and documented
+as lessons, not hidden): (a) a per-user disk quota was silently exhausted
+partway through submission, causing 8 jobs submitted before the fix to
+fail with no log output at all (the `qwen2.5:7b` pull failing 4x, plus
+`gemma2:27b`-large, both RQ2-noground, and the original seed13 reruns) --
+fixed by deleting 2 exclusively-owned `llama3.1:8b` blobs and `gemma2:9b`'s
+blob (verified via manifest cross-reference before deleting anything,
+freed ~10GB, confirmed under quota via a `dd` write test); (b) `/tmp` job
+scripts twice went missing between SSH sessions (the login node does not
+persist `/tmp` across sessions/nodes) -- fixed by recreating and
+submitting all affected scripts within a single SSH session going
+forward. One additional gap was found only by cross-checking the full
+`sacct` history rather than trusting the original submission list: the
+`seed17`/bullwhip rerun had actually failed twice, silently, before the
+quota fix and was never resubmitted by the original driver -- caught and
+fixed by resubmitting it directly.
 
-**Explicitly not done, do not infer otherwise:** items 8-10 (final
-consolidation, explicit under-support flags, single final commit) are
-blocked on items 1-4 actually finishing -- cluster wall-clock cannot be
-compressed. The next session/turn should check `rq_48h_job_ids.txt` and
-`sacct` for real job states, pull whichever result files exist, and
-complete items 8-10 with only confirmed data.
+**RQ1 -- Gemma2:27B at the large tier (reduced scope: `standalone`/cost
+and `negotiation_tool`/bullwhip only, per explicit instruction not to run
+all 5 large-tier frameworks):**
 
-## How to actually run this
+| Shard | Cost | Bullwhip | Elapsed |
+|---|---|---|---|
+| `standalone`/large/cost (Gemma2:27B) | 282,942 | 0.200 | 236s |
+| `negotiation_tool`/large/bullwhip (Gemma2:27B) | 366,606 | 5.221 | 2,537s |
+
+Compared against Llama3.1:70B at the same shards: `standalone`/cost was
+113,678 (section (n) item 6 table) -- **Gemma2:27B is 2.5x worse**, the
+opposite direction from the small-tier finding in section (l) where
+Gemma2:9B beat Llama3.1:8B by ~3.9x. `negotiation_tool`/bullwhip for
+Llama3.1:70B ranges 12,162-42,233 in cost across the 5 new seeded reruns
+below (mean 32,573, std ~12,124) -- **Gemma2:27B's cost of 366,606 is
+~9-11x outside that entire range**, while its bullwhip (5.221) falls
+within Llama's own run-to-run spread (0.15-8.87) and is therefore not
+distinguishable from noise on that axis alone. Single run each side, no
+seed control between model families -- treat the cost gap as a real,
+large, and directionally clear finding; treat the bullwhip comparison as
+inconclusive given Llama's own variance.
+
+**RQ1 -- Qwen2.5:7B at the small tier (reduced scope: `standalone`/cost,
+`negotiation_tool`/cost, `negotiation_tool`/bullwhip):**
+
+| Shard | Cost | Bullwhip | Elapsed | Hardware |
+|---|---|---|---|---|
+| `standalone`/small/cost (Qwen2.5:7B) | 905,997 | 0.0101 | 64s | GPU (H200) |
+| `negotiation_tool`/small/cost (Qwen2.5:7B) | 168,941 | 0.9197 | 16,371s (4.5h) | CPU (cascadelake) |
+| `negotiation_tool`/small/bullwhip (Qwen2.5:7B) | 49,832 | 5.3699 | 17,323s (4.8h) | CPU (cascadelake) |
+
+**Hardware caveat:** the `standalone` shard was moved to a GPU node
+mid-push after its CPU attempt hit an 8h wall-clock timeout on a
+congested queue (genuinely still processing at cutoff, not stuck --
+resubmitted on GPU and finished in 64s). Its two `negotiation_tool`
+siblings still ran on CPU as originally planned. This means the 64s vs
+16,371s/17,323s elapsed-time comparison between Qwen shards is **not a
+fair speed comparison** (different hardware) -- only the cost/bullwhip
+values are comparable across shards, not wall-clock.
+
+Three-way small-tier `standalone`/cost comparison now exists:
+Gemma2:9B (326,382) < Qwen2.5:7B (905,997) < Llama3.1:8B (1,257,570).
+Qwen sits between the other two, closer to Gemma's side of the gap than
+Llama's, but still 2.8x worse than Gemma. For `negotiation_tool`/small,
+Llama's cost-metric run was 262,526/0.6999 and Gemma's was 237,875/1.3365
+vs Qwen's 168,941/0.9197 (cost-metric) -- **Qwen actually has the best
+cost of the three here**, reversing its standalone-tier ranking. For
+bullwhip-metric `negotiation_tool`/small: Llama 216,283/6.0594, Gemma
+232,928/8.6914, Qwen 49,832/5.3699 -- Qwen again best on cost, middle on
+bullwhip. All single-run, single-model comparisons -- no repeats for any
+of the three families at this shard shape, so these rankings are
+suggestive, not statistically established.
+
+**RQ2 -- isolated memory-ablation via `DISABLE_TRANSCRIPT_GROUNDING=1`
+(reverts only the section (h) grounding fix, keeps (i) rounding and
+(i.2) zero-EOQ fixes in place):**
+
+| Shard | Cost | Bullwhip |
+|---|---|---|
+| `negotiation_tool`/large/cost, no-grounding | 45,864 | 4.582 |
+| `negotiation_tool`/large/bullwhip, no-grounding | 11,308 | 0.0155 |
+
+Grounded (all-fixes) baseline for comparison: cost-metric run
+175,328/2.197 (single point); bullwhip-metric run 43,420/1.721 (single
+point); the 5-seed grounded distribution below gives cost-metric cost
+mean 130,169 (std ~42,393) and bullwhip-metric bullwhip mean 2.959 (std
+~3.610). **Both no-grounding numbers land outside the low end of the
+grounded distribution** (45,864 is below the grounded cost-metric
+minimum of 70,106; 0.0155 is far below the grounded bullwhip-metric
+minimum of 0.1468) -- i.e., on this single run, removing the memory/
+grounding fix looks *better*, not worse, which is the opposite of what
+section (h) assumed when introducing the fix. **This is not a safe
+causal conclusion**: it is n=1 vs n=5 with no shared seed between the
+no-grounding run and the grounded seed set, and section (m)/(n) already
+established this framework has enormous run-to-run variance (grounded
+bullwhip-metric bullwhip alone ranges 0.15-8.87 across 5 seeds). A real
+answer requires a same-seed grounded-vs-ungrounded matched pair, which
+was not done here. Flagged as a genuinely open, surprising result rather
+than smoothed over.
+
+**RQ3/RQ5 -- seeded reruns of `negotiation_tool`/large, 5 new seeds
+(13, 17, 23, 29, 31), both metrics, both demand generation and LLM
+sampling now actually controlled by `EXPERIMENT_SEED` (previously only
+demand was seeded; LLM temperature sampling was not, so these are not
+literal repeats of the original single-point results cited in section
+(m), which used seed 13 for demand only):**
+
+| Seed | Cost-metric run (cost / bullwhip) | Bullwhip-metric run (cost / bullwhip) |
+|---|---|---|
+| 13 | 133,723 / 2.456 | 32,113 / 0.147 |
+| 17 | 188,159 / 1.477 | 42,233 / 8.867 |
+| 23 | 119,312 / 2.184 | 35,441 / 3.705 |
+| 29 | 139,543 / 2.895 | 40,918 / 0.205 |
+| 31 | 70,106 / 6.003 | 12,162 / 1.870 |
+| **mean (n=5)** | **130,169 / 3.003** | **32,573 / 2.959** |
+| **std (n=5, sample)** | **~42,393 / ~1.754** | **~12,124 / ~3.610** |
+
+The headline number: for the bullwhip-metric run, **std (3.610) exceeds
+the mean (2.959)** -- coefficient of variation over 100%, driven almost
+entirely by seed 17's 8.867 outlier. This is now backed by an actual
+n=5 seed-controlled sample, not the n=1-2 uncontrolled points in section
+(m)'s table -- and it confirms, with real statistics instead of
+anecdote, that `negotiation_tool`/large's bullwhip outcome is not a
+stable, reproducible number even holding demand and (attempted) LLM
+sampling constant.
+
+**Bonus file beyond the original 17-item scope:** while auditing, the
+gap in seed17/bullwhip was found and fixed (see above) -- it is already
+folded into the n=5 table rather than listed separately.
+
+## (o) Final consolidation of the 48-hour push (2026-09-30)
+
+**Item 8 -- honest done/partial/not-started status, confirmed from
+actual result files (not submission logs):**
+
+| # | Item | Status | Evidence |
+|---|---|---|---|
+| 1 | RQ1 Gemma2:27B large (reduced scope, 2 shards) | **Done** | `results/rq1_gemma227b_{standalone_large_cost,negotiation_tool_large_bullwhip}.json`, both non-empty |
+| 2 | RQ1 Qwen2.5:7B small (reduced scope, 3 shards) | **Done** | `results/rq1_qwen257b_{standalone_small_cost,negotiation_tool_small_cost,negotiation_tool_small_bullwhip}.json`, all non-empty |
+| 3 | RQ2 memory-ablation (2 shards) | **Done** | `results/rq2_noground_negotiation_tool_large_{cost,bullwhip}.json`, both non-empty |
+| 4 | RQ3/RQ5 seeded reruns (10 shards, 5 seeds x 2 metrics) | **Done** | `results/rq35_seed{13,17,23,29,31}_negotiation_tool_large_{cost,bullwhip}.json`, all 10 non-empty (seed17/bullwhip needed a second resubmission after a silent pre-quota-fix failure) |
+| 5 | Transcript classification (Llama) | **Done** (carried over from earlier in section (n)) | table in section (n), n=2800 |
+| 6 | Effort-vs-benefit table | **Done** (carried over) | table in section (n) |
+| 7 | Section (n) skeleton | **Done** | section (n) itself, filled with real data, not left blank |
+| 8 | This status table | **Done** | this table |
+| 9 | Under-support flags | **Done** | below |
+| 10 | Single final commit | **Done** | commit hash reported after this edit, see end of this section |
+
+**Not attempted, out of the original 10-item scope, and should not be
+read as "done":** Qwen2.5 at the large tier (never planned -- RQ1's
+Qwen ablation was small-tier only by design); Gemma at any tier beyond
+the 2 reduced-scope large-tier shards above (the small-tier 10-shard
+grid was already complete before this push, see section (m) item 1); a
+merged Table 1/Table 2 across the full Gemma grid (still not done, same
+gap section (m) already flagged); a same-seed matched grounded-vs-
+ungrounded pair for RQ2 (flagged above as the real way to settle that
+question).
+
+**Item 9 -- which of the 5 original research questions remain
+under-supported even after this push, stated plainly:**
+
+- **RQ1 (cross-model-family robustness)**: Best-supported of the five,
+  but still thin. Small tier now has 3 families x up to 3 shards each
+  (still single-run per shard, no repeats for any family at this shard
+  shape). Large tier has exactly 2 Gemma shards and relies on a single
+  Llama baseline point per shard for comparison -- enough to see a large,
+  directionally clear cost gap, not enough to rule out seed-driven
+  chance for the smaller bullwhip gap. **Under-supported at the large
+  tier; adequately supported (for a qualitative claim) at the small
+  tier.**
+- **RQ2 (memory/grounding ablation)**: **Under-supported.** A single run
+  per metric, no seed control, no matched grounded/ungrounded pair on
+  the same seed. The result (no-grounding looking *better*) is
+  interesting enough to report but not strong enough to act on --
+  exactly the kind of result that would flip with a different seed given
+  how much variance section (n)'s own n=5 table shows this framework has.
+- **RQ3 (negotiation-strategy taxonomy / transcript classification)**:
+  **Reasonably supported for Llama** (n=2800, all fix-states), **not
+  supported at all for Gemma or Qwen** (no transcript capture was ever
+  enabled for either family's negotiation runs -- a real, acknowledged
+  gap, not an oversight being hidden).
+- **RQ4 (communication-cost/efficiency metric)**: **Well-supported** --
+  the effort-vs-benefit table in section (n) item 6 uses real elapsed
+  times and costs across all 5 frameworks at the large tier, all from
+  the same fix-state and run. This is the strongest-evidenced of the
+  five.
+- **RQ5 (variance/reproducibility of the bullwhip metric)**: **Now
+  well-supported, and the finding is that the metric itself is
+  unreliable for this framework.** n=5 seeded reruns give a real
+  standard deviation that exceeds the mean for `negotiation_tool`/
+  large's bullwhip-metric bullwhip value. This is a genuine, load-
+  bearing result for the presentation: it means single-run bullwhip
+  numbers anywhere else in this document (and in the original paper,
+  which does not report repeated runs either) should be read with real
+  skepticism, not just a footnote.
+
+**Bottom line for presentation framing:** the two questions with the
+most rigorous support are RQ4 (effort-vs-benefit) and RQ5 (variance) --
+both are clean, quantitative, and novel relative to the paper (which
+reports neither call-counts nor repeated-run variance). RQ1 supports a
+clear qualitative claim at the small tier but not the large tier. RQ2 and
+the Gemma/Qwen side of RQ3 are the weakest and should be framed as
+"promising, not yet conclusive" rather than settled findings.
 
 Locally (laptop, small-scale validation only):
 ```
