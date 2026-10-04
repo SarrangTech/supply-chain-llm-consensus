@@ -223,7 +223,18 @@ class OllamaClient(BaseChatClient):
                     "num_ctx": 4096,
                 },
             },
-            timeout=600,  # local CPU inference can be slower than a hosted API
+            # 2026-10-01: raised from 600s after 4 consecutive real failures
+            # (both Gemma and Qwen, both metrics) on the --include-transcripts
+            # small-tier CPU reruns, all timing out on the genuine first real
+            # LLM call (step 0's degenerate zero-EOQ case is skipped in code,
+            # so this is step 1's first call) at exactly 600s, despite a
+            # successful warm-up immediately before each. Not reproduced on
+            # the original (non-transcript) small-tier CPU runs from the day
+            # before. No code-level cause found connecting --include-transcripts
+            # to this (transcript_sink is a pure output accumulator, never fed
+            # back into any prompt) -- most likely a cluster load/CPU-
+            # performance variation between the two days, not a logic bug.
+            timeout=1200,  # local CPU inference can be slower than a hosted API
         )
         resp.raise_for_status()
         data = resp.json()

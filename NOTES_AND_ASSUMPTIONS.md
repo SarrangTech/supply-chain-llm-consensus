@@ -1375,6 +1375,223 @@ clear qualitative claim at the small tier but not the large tier. RQ2 and
 the Gemma/Qwen side of RQ3 are the weakest and should be framed as
 "promising, not yet conclusive" rather than settled findings.
 
+## (p) RQ2 paired memory ablation and RQ3 three-model transcript taxonomy, completed (2026-10-04)
+
+Both items from this push are now fully complete with verified result
+files. This section also documents a real, multi-day debugging journey for
+the RQ3 transcript jobs that is worth keeping as a lesson for future CPU
+job scripts on this cluster.
+
+**RQ2 -- paired memory ablation, 5 seeds, grounded vs ungrounded, same
+seed each side:**
+
+Seed 13's ungrounded arm reuses the original (pre-dedicated-pairing)
+`DISABLE_TRANSCRIPT_GROUNDING=1` run from section (o), already verified
+valid for this pairing (exact line quote + mtime check confirming
+`EXPERIMENT_SEED` defaulted to 13 and was live in the code before that run
+executed). Seeds 17/23/29/31 are fresh paired reruns from this push.
+
+| Seed | Grounded cost-run (cost/bw) | Ungrounded cost-run (cost/bw) | Grounded bullwhip-run (cost/bw) | Ungrounded bullwhip-run (cost/bw) |
+|---|---|---|---|---|
+| 13 | 133,723 / 2.456 | 45,864 / 4.582 | 32,113 / 0.147 | 11,308 / 0.0155 |
+| 17 | 188,159 / 1.477 | 32,699 / 1.243 | 42,233 / 8.867 | 9,732 / 0.0118 |
+| 23 | 119,312 / 2.184 | 82,445 / 5.630 | 35,441 / 3.705 | 11,494 / 0.0113 |
+| 29 | 139,543 / 2.895 | 45,443 / 2.576 | 40,918 / 0.205 | 9,087 / 0.0085 |
+| 31 | 70,106 / 6.003 | 31,554 / 1.597 | 12,162 / 1.870 | 8,796 / 0.0097 |
+
+Mean paired difference (ungrounded minus grounded, n=5):
+
+| Contrast | Mean difference | Sign-consistency |
+|---|---|---|
+| Cost-run's cost | **-82,568** | 5/5 seeds negative |
+| Cost-run's bullwhip | +0.123 | 2/5 negative, 3/5 positive -- no consistent effect |
+| Bullwhip-run's cost | **-22,490** | 5/5 seeds negative |
+| Bullwhip-run's bullwhip | **-2.947** | 5/5 seeds negative |
+
+**Plain statement: once properly paired across 5 seeds, transcript
+grounding does not help, and on cost and on the bullwhip-optimizing run's
+bullwhip outcome, it measurably hurts -- consistently, in the same
+direction, across every single seed tested.** This is the opposite of
+what section (h) assumed when introducing the fix (that giving the model
+its own prior negotiation turns to ground its final answer in would
+produce more coherent, better outcomes). The only contrast with no clear
+effect is the cost-run's bullwhip side-metric, which is genuinely mixed.
+A plausible (not confirmed) explanation: grounding exposes the model to
+the full back-and-forth exchange, which may anchor its final answer on
+whatever drifted during the conversation rather than on its own EOQ tool
+output directly -- an ungrounded model simply restates its own anchor more
+consistently. This is worth a sentence in the presentation as a genuine,
+surprising, well-evidenced negative result, not something to soften.
+
+**RQ3 -- three-model negotiation-style transcript classification:**
+
+Classifier (unchanged from section (n)'s definition): breakdown = an
+order hits the hard cap of 100, or exceeds `3 * max(both eoqs, 0.01) + 5`;
+converged = final orders within `max(1, 15% of their mean)` of each
+other; one_sided = neither. Degenerate zero-EOQ skipped-negotiation
+entries (section (i.2)) excluded from all three models' counts, since no
+real negotiation happened in those steps.
+
+| Model | n | Converged | One-sided | Breakdown |
+|---|---|---|---|---|
+| Llama 3.1 (8B/70B pooled, all fix-states) | 2,800 | 71.2% | 17.9% | 10.9% |
+| Gemma2:9b (cost+bullwhip shards) | 792 | 78.5% | 10.1% | 11.4% |
+| Qwen2.5:7b (cost+bullwhip shards) | 792 | 86.4% | 9.3% | 4.3% |
+
+Qwen2.5:7b shows the highest convergence rate and lowest breakdown rate
+of the three families; Gemma2:9b's breakdown rate is the highest, similar
+to Llama's pooled rate (which itself pools several pre-fix, high-
+breakdown runs in with the clean final-state ones -- not a fully
+apples-to-apples comparison, since Qwen/Gemma here only reflect the
+final, all-fixes-applied code state). A fairer comparison restricts Llama
+to just its final fix-state rows (bullwhip H+I+I.2: 98.0/1.0/1.0; cost
+H+I: 83.2/9.8/7.0) -- against which Qwen looks comparable-to-better and
+Gemma looks comparable-to-worse. Caveat: n=792 per model (2 shards x
+~396 non-degenerate transcripts each) vs Llama's much larger pooled n --
+and this is one run per model per shard, no repeats, so these percentages
+carry the same small-sample caveat as everywhere else in this document.
+
+**The real debugging story behind these 4 transcript files (worth keeping
+as a lesson, not just the clean final numbers):**
+
+1. Both original Gemma transcript attempts crashed with HTTP 404. Root
+   cause: `gemma2:9b`'s model blob had been deleted earlier this same
+   session during the disk-quota cleanup (section (o)) -- confirmed via
+   `ollama`'s manifest directory showing only `27b` left under
+   `library/gemma2`. Fixed by re-pulling `gemma2:9b` (confirmed quota
+   headroom first via a `dd` write test).
+2. Both original Qwen transcript attempts crashed with a 600s
+   `ReadTimeout` on the very first real negotiation call (the global
+   first LLM call of the whole run, step 0's degenerate-zero-EOQ case
+   being skipped in code) -- despite a successful warm-up immediately
+   before. Initially misdiagnosed as "flaky CPU slowness" and the
+   hardcoded per-call timeout in `src/llm_client.py` was raised 600s ->
+   1200s as a first attempt. **This did not fix it** -- the retried jobs
+   hit the new 1200s ceiling just as squarely as the old 600s one,
+   which is the signature of a genuine hang, not borderline slowness (a
+   call that merely needs a bit more time finishes well inside a doubled
+   budget; one that's actually stuck consumes the entire budget again).
+3. A separate, also-real bug was found and fixed en route: the job
+   script's `kill $SERVER_PID` always returns 0, so SLURM reported
+   `COMPLETED` for jobs that had actually crashed with a Python
+   traceback. Fixed by capturing the real exit code and propagating it
+   (`RC=$?; kill ...; exit $RC`) -- this surfaced true `FAILED` states
+   on the next round of retries instead of silently masking them.
+4. Root cause of the real hang: confirmed via a controlled diagnostic
+   job that ran a single `OllamaClient.chat()` call two ways on an
+   identical `--exclusive` dual-socket Cascade Lake node (56 logical
+   CPUs). With `SLURM_CPUS_PER_TASK` unset (the job scripts never set
+   it, so `src/llm_client.py`'s fallback `os.cpu_count()` picked up all
+   56), the exact same prompt that previously hung past both 600s and
+   1200s instead **completed in 23.7s** (15.3s model load + 8.2s
+   inference, ~12.7 tok/s) once `SLURM_CPUS_PER_TASK=16` was forced.
+   This is cross-socket NUMA thread-oversubscription -- a dual-socket
+   machine running CPU inference across both sockets' full logical core
+   count without pinning can degrade by orders of magnitude (hang
+   indefinitely under load, in this case), a known class of llama.cpp/
+   CPU-inference pathology. **Fix applied to all 4 jobs: `--cpus-per-task
+   =16`** (which also lets SLURM auto-populate `SLURM_CPUS_PER_TASK`
+   correctly, rather than needing a manual export).
+5. A final wrinkle, not a bug: switching jobs to request `--cpus-per-task
+   =16` instead of `--exclusive` also let them schedule much faster
+   (escaping a period of genuine cluster-wide `short`-partition
+   congestion -- 0 idle exclusive nodes, ~2,838 pending jobs cluster-
+   wide at the time). Once running, Gemma2:9b's two shards each took
+   ~10.5-10.7 hours (vs Qwen's ~7.3-7.6 hours) -- Gemma is simply slower
+   per-call than Qwen at 16 threads on this hardware; the first (8h-
+   limited) Gemma attempt had made genuine, healthy progress (2,393 real
+   LLM calls logged, zero crashes) when it hit its time limit, confirming
+   this was ordinary under-provisioned walltime, not a recurrence of the
+   NUMA hang. Resubmitted with a 16h limit and both completed cleanly.
+
+No code outside the job scripts themselves needed to change for the real
+fix (the `timeout=600->1200` change in `src/llm_client.py` is a
+harmless, already-committed safety margin from the misdiagnosis step, not
+load-bearing for the actual fix).
+
+## (q) Final RQ-by-RQ readiness audit (2026-10-04)
+
+Confirmed from actual saved result files only, not from job-submission
+history or prior summaries. Where a prior entry said "in progress," this
+section states explicitly whether that turned out to be true.
+
+**RQ1 -- cross-model generalization**
+
+*Small tier:* Llama and Gemma2:9b both have complete 5-framework x
+2-metric grids (10/10 files each: `results/full_<framework>_small_<metric>
+.json` and `results/full_gemma_<framework>_small_<metric>.json`,
+confirmed present via directory listing). **Qwen2.5:7b does not** -- only
+3 of 10 shards exist (`standalone`/cost, `negotiation_tool`/cost,
+`negotiation_tool`/bullwhip), by deliberate reduced scope per the 48h
+push's own instructions, not an oversight. **Verdict: small-tier
+generalization is answerable for Llama-vs-Gemma across the full grid;
+Qwen is only comparable on the 3 shards it has (standalone/cost and both
+negotiation_tool metrics) -- a partial, not full, three-way comparison.**
+
+*Large tier:* exactly 2 Gemma2:27b data points exist (`standalone`/cost,
+`negotiation_tool`/bullwhip -- confirmed, matches the last known count).
+Qwen has never been tested at the large tier -- zero files, no code path
+even attempted (confirmed, matches last known). **This is not enough to
+claim large-tier generalization** -- it supports exactly one qualitative
+point (Gemma2:27b was ~2.5x worse than Llama3.1:70b on standalone/cost,
+section (o)) and nothing further. Large-tier generalization should be
+presented as a single contrast, not a pattern.
+
+**RQ2 -- memory ablation: YES, done, see section (p) above.** All 8
+paired-seed jobs (seeds 17/23/29/31, both metrics) completed and verified
+with real result files. Combined with the already-valid seed-13 pairing,
+this is a genuine 5-seed paired comparison with a mean paired difference
+computed in both directions (cost and bullwhip) for both run types.
+**Grounding does not help, and on 3 of 4 measured contrasts it
+consistently hurts (5/5 seeds in the same direction) -- stated plainly in
+section (p), not softened.**
+
+**RQ3 -- negotiation-style taxonomy: YES, done, see section (p) above.**
+All 4 transcript-capture jobs (Gemma2:9b + Qwen2.5:7b, both metrics)
+completed; all 4 result files confirmed to contain real transcript data
+(400 transcripts each, verified by loading and counting). The classifier
+ran cleanly against all of it. Three-way table (Llama n=2800, Gemma
+n=792, Qwen n=792) is in section (p), with the caveat already noted there
+that Llama's pooled n spans multiple fix-states while Gemma/Qwen only
+reflect the final code state -- a fairer same-fix-state comparison is
+also given in section (p).
+
+**RQ4 -- effort vs. benefit: confirmed unchanged from the last audit.**
+Still the section (n) item 6 table (`results_postfix.json`, 70B tier,
+cost metric, all-fixes-applied state) -- no new data needed or added this
+round; re-verified the file still exists and is unmodified.
+
+**RQ5 -- reliability / bullwhip variance: confirmed unchanged from the
+last audit.** Still the 5-seed `negotiation_tool`/large grounded
+distribution from section (o) (bullwhip-metric bullwhip: mean 2.959, std
+~3.610, CoV >100%) -- no new seeds were added this round (this push's new
+GPU jobs were the *ungrounded* arm for RQ2's pairing, not additional
+grounded seeds for RQ5). RQ5's evidence base is exactly what it was at
+the last audit, re-confirmed present in `results/rq35_seed*_negotiation_
+tool_large_*.json`.
+
+**Overall verdict:**
+
+- **Ready to write up as results right now, no caveats beyond what's
+  already stated:** RQ2 (memory ablation), RQ3 (transcript taxonomy),
+  RQ4 (effort vs. benefit), RQ5 (bullwhip variance). All four have
+  complete, verified result files and no in-flight jobs.
+- **Ready to write up, but scope must be stated precisely rather than
+  implied as complete:** RQ1. Small-tier Llama-vs-Gemma is a real,
+  full, well-evidenced comparison. Qwen's small-tier role is limited to
+  3 shards. Large-tier is a single 2-point contrast, not a trend.
+- **No RQ requires new in-flight jobs to finish** -- everything that was
+  running as of the last several updates has now completed and been
+  verified.
+- **Not started / not scoped, if more RQ1 coverage is wanted:** the 7
+  missing Qwen small-tier shards (standalone/bullwhip, standalone_tool
+  both metrics, info_sharing both metrics, info_sharing_tool both
+  metrics) and any Qwen large-tier data at all. Both would need new
+  scoping/time budget decisions, not just a job resubmission -- they
+  were never part of this push's agreed reduced scope.
+
+## How to actually run this
+
 Locally (laptop, small-scale validation only):
 ```
 pip install -r requirements.txt
