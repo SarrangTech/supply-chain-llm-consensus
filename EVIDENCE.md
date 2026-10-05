@@ -57,7 +57,7 @@ Two jobs show `FAILED`: 9836200 (real data loss, rerun as 9851695) and
 9836378 (cosmetic -- rerun wasn't needed, results were already valid; see
 NOTES_AND_ASSUMPTIONS.md section (f), "port-collision bug"). Two show
 `TIMEOUT`: 9836205 and 9836207 (noisy-neighbor CPU contention, rerun as
-9852815/9852816 with `--exclusive`). Cross-reference `pilot_job_ids.txt`
+9852815/9852816 with `--exclusive`). Cross-reference `jobs/pilot.txt`
 for which shard each job ID corresponds to.
 
 ## 2. Physical GPU hardware used (UUIDs are burned into each card)
@@ -124,7 +124,7 @@ system_info: n_threads = 56 (n_threads_batch = 56) / 112 | CPU : ... AVX512 = 1 
 
 ## How this maps to the repo's other evidence files
 
-- `pilot_job_ids.txt` -- which shard (framework/tier/metric) each job ID
+- `jobs/pilot.txt` -- which shard (framework/tier/metric) each job ID
   above corresponds to.
 - `results/pilot_*.json` -- the actual cost/bullwhip/elapsed_sec output
   each job produced.

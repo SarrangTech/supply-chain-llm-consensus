@@ -25,7 +25,8 @@ from-scratch reconstruction of the paper's stated methodology.
 
 **Update, 2026-08-26**: while waiting for more compute from the user's
 university (needed for the 70B/"large" tier -- see hardware check in
-`REPORT.md`/`FULL_SESSION_LOG.md` Phase 18), the "small"/8B tier now runs
+`docs/archive/REPORT.md`/`docs/archive/FULL_SESSION_LOG.md` Phase 18,
+both since superseded/archived), the "small"/8B tier now runs
 **locally via Ollama** instead of OpenRouter, at the user's request. This is
 free and fits this machine's 15.6GB RAM. The routing is controlled entirely
 by `config.BACKENDS` (`{"small": "ollama", "large": "openrouter"}`) --
@@ -330,7 +331,7 @@ needed a rerun after the bugs above were fixed (`info_sharing`/large/cost:
 port collision: SLURM job 9836200 -> rerun 9851695; `standalone_tool`/
 small/bullwhip and `info_sharing_tool`/small/cost: noisy neighbor: SLURM
 jobs 9836205, 9836207 -> reruns 9852815, 9852816). Full job-ID provenance
-is in `pilot_job_ids.txt`; raw output in `results/pilot_*.json`.
+is in `jobs/pilot.txt`; raw output in `results/pilot_*.json`.
 
 ```
 framework           tier   metric          cost    bullwhip elapsed_s
@@ -378,7 +379,7 @@ estimate from section (b) compounding across the whole grid.
 ## (g) Full 200-step, 25-configuration grid (2026-09-02) -- the paper's actual spec
 
 Ran for real using `submit_shard.sh`, all 20 LLM-driven shards in parallel
-across the cluster (job IDs in `full_job_ids.txt`), then merged and
+across the cluster (job IDs in `jobs/full.txt`), then merged and
 deduplicated (baselines are recomputed identically by every shard since
 they're deterministic given the fixed demand series, so duplicates were
 dropped: 70 raw rows -> 25 canonical rows in `results/results.json`, one
@@ -745,7 +746,7 @@ across the *entire* grid, not just isolated diagnostic shards -- every
 one of the 20 LLM-driven configs was rerun at the full 200 steps.
 Canonical merged results: `results/results_postfix.json` (supersedes the
 pre-fix `results/results.json`, which is left in place for the historical
-record). Job-ID provenance: `full2_job_ids.txt`.
+record). Job-ID provenance: `jobs/full2.txt`.
 
 **Full before/after, every LLM-driven config:**
 
@@ -975,7 +976,11 @@ comparison.
 Submitted all 10 small-tier shards (5 frameworks x 2 metrics; large/70B
 tier untouched -- all 3 agents share one model per config, so the
 70B-tier results from section (j) remain valid regardless of the
-small-tier model choice). Job IDs: `gemma_full_job_ids.txt`. Output:
+small-tier model choice). Job IDs: tracked only in conversation/commit
+history for this campaign -- no `gemma_full_job_ids.txt` file was ever
+actually created, despite this line having referenced it as if it existed
+(see `jobs/README.md`'s "known gap" note, added 2026-10-05 during a repo
+structure cleanup; not fabricated after the fact to close the gap). Output:
 `results/full_gemma_<framework>_small_<metric>.json` (kept separate from
 the existing Llama `results/full_<framework>_small_<metric>.json` files
 so both remain available for comparison).

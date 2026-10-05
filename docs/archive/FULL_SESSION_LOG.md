@@ -1,3 +1,10 @@
+> **Superseded, 2026-10-05.** Last updated 2026-08-28, predates the full
+> 200-step grid, every negotiation bug fix, the cross-model (Gemma/Qwen)
+> ablation, and all five research questions' framing. Kept for historical
+> interest only. **For the actual current state, read
+> [`NOTES_AND_ASSUMPTIONS.md`](../../NOTES_AND_ASSUMPTIONS.md) and
+> [`README.md`](../../README.md).**
+
 # Full session log — every step taken, in order, with rationale
 
 This is the exhaustive, chronological companion to `REPORT.md` (which stays

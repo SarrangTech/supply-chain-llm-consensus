@@ -1,3 +1,12 @@
+> **Superseded, 2026-10-05.** This is a day-1 snapshot (last updated
+> 2026-08-18) and is now factually wrong about the project's state --
+> e.g. it says the full real-data run never completed due to insufficient
+> OpenRouter credit and incapable local hardware, both long since resolved
+> by the move to the Explorer HPC cluster. Kept for historical interest
+> only. **For the actual current state, read
+> [`NOTES_AND_ASSUMPTIONS.md`](../../NOTES_AND_ASSUMPTIONS.md) and
+> [`README.md`](../../README.md).**
+
 # Replication Report: Agentic LLMs in the Supply Chain
 
 Target paper: Jannelli, Schoepf, Bickel, Netland & Brintrup (2025), "Agentic
