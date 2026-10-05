@@ -9,6 +9,12 @@ full investigation narrative behind any of these, read
 [`NOTES_AND_ASSUMPTIONS.md`](../NOTES_AND_ASSUMPTIONS.md) (sections
 referenced below).
 
+**Writing the paper's results section? Start with
+[`RESULTS_SUMMARY.md`](RESULTS_SUMMARY.md)** instead -- one page, by
+research question, with verdicts, confidence levels, and exact file/section
+references. This index is for browsing raw files; that one is for citing
+numbers.
+
 ## Pipeline validation (not meaningful results)
 
 - `ollama_smoke.json`, `smoke_test.json`, `pilot_log.txt`,
