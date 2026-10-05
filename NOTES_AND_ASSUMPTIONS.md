@@ -1590,6 +1590,146 @@ tool_large_*.json`.
   scoping/time budget decisions, not just a job resubmission -- they
   were never part of this push's agreed reduced scope.
 
+## (r) RQ2 mechanism investigation: is "ungrounded beats grounded" a real memory effect, or non-negotiation in disguise? (2026-10-05)
+
+Section (p)'s RQ2 finding (ungrounded beats grounded on cost, 5/5 seeds)
+was reported from summary cost/bullwhip numbers only -- none of those
+runs captured transcripts, so the *mechanism* behind the result was
+unverified. Two candidate explanations were raised: (A) the model
+genuinely reasons differently without the transcript and that different
+reasoning happens to produce better outcomes; or (B) without the
+transcript, the final-answer step isn't negotiating at all -- it's
+outputting something close to its own EOQ, since that's the only number
+in its prompt, making the "ungrounded" condition `standalone_tool` wearing
+a negotiation costume rather than negotiation without memory.
+
+**This section does not revise the RQ2 numbers already reported in
+sections (p)/(q) -- it explains the mechanism behind them.**
+
+### Step 1: new data pulled
+
+All 5 ungrounded seeds (13, 17, 23, 29, 31), both metrics, rerun with
+`--include-transcripts` (10 new files, `results/mech_seed{13,17,23,29,31}
+_noground_negotiation_tool_large_{cost,bullwhip}.json`). Every file's
+summary cost/bullwhip exactly matches the already-reported section (p)/
+(o) numbers for that seed -- confirms these are genuinely the same
+experimental runs, just with transcripts captured this time, not a
+different sample.
+
+### Step 2: round(own_eoq) match test
+
+Grounded baseline (from `results/diagnostic/diag_negotiation_tool_
+bullwhip_zerofix.json` and `diag_negotiation_tool_cost_postfix2.json` --
+the H+I+I.2 final-state diagnostic files underlying `results_postfix.
+json`'s numbers; not seed-matched to 13/17/23/29/31 specifically, but the
+same grounded code path):
+
+| | Grounded | Ungrounded (pooled, 5 seeds) |
+|---|---|---|
+| Cost-run: match round(own_eoq) | 11.9% (95/800) | **97.3% (3,835/3,940)** |
+| Bullwhip-run: match round(own_eoq) | 79.3% (628/792) | **99.2% (3,930/3,960)** |
+
+Per-seed breakdown (all 10 files, consistent across every seed -- not a
+fluke of one run):
+
+| Seed | Run | n | Match% | Agree% | Non-match diff (mean/min/max) |
+|---|---|---|---|---|---|
+| 13 | cost | 394 | 97.3% | 31.7% | +23.00 / 1 / 69 |
+| 13 | bullwhip | 396 | 98.7% | 78.3% | +1.00 / 1 / 1 |
+| 17 | cost | 396 | 96.3% | 21.2% | +13.62 / 1 / 69 |
+| 17 | bullwhip | 396 | 98.9% | 82.1% | +1.00 / 1 / 1 |
+| 23 | cost | 395 | 95.9% | 26.1% | +29.41 / 1 / 89 |
+| 23 | bullwhip | 396 | 99.7% | 83.1% | +1.00 / 1 / 1 |
+| 29 | cost | 396 | 97.9% | 40.7% | +37.24 / 1 / 79 |
+| 29 | bullwhip | 396 | 99.1% | 88.6% | +1.00 / 1 / 1 |
+| 31 | cost | 389 | 99.2% | 34.7% | +31.33 / 1 / 79 |
+| 31 | bullwhip | 396 | 99.7% | 86.4% | +1.00 / 1 / 1 |
+
+**Discernible pattern:** for the bullwhip-run, every single non-matching
+case across all 5 seeds is off by exactly `+1` (min=max=1, every seed) --
+this is a uniform rounding-convention artifact (this analysis's
+round-half-up vs whatever the model/parser effectively does at a `.5`
+boundary), not a sign of real reasoning. Treating "off by exactly 1" as
+equivalent to a match, the ungrounded bullwhip-run's true round(own_eoq)
+alignment is effectively ~100%. The cost-run's non-matches are a
+different, more substantial kind of deviation (wide range, up to 89) --
+but these are a small minority (2.1-4.1% of answers per seed).
+
+### Step 3: two-agent agreement test
+
+| | Grounded | Ungrounded (pooled, 5 seeds) |
+|---|---|---|
+| Cost-run: agents agree | 74.8% (299/400) | **30.9% (608/1,970)** |
+| Bullwhip-run: agents agree | 93.2% (369/396) | **83.7% (1,657/1,980)** |
+
+Cost-run agreement **collapses** (74.8% -> 30.9%) when ungrounded -- two
+agents each reporting their own (usually different) EOQ independently
+will rarely agree, exactly as mechanism (B) predicts. Bullwhip-run
+agreement drops much more modestly (93.2% -> 83.7%).
+
+### Step 4: raw text examples
+
+8 raw `final_reply` samples pulled and read directly (verbatim):
+
+| Context | own_eoq | round | order | raw reply |
+|---|---|---|---|---|
+| seed13 cost, matches | 10.000 | 10 | 10 | `'[[10]]'` |
+| seed13 cost, non-match | 0.069 | 0 | 7 | `'[[7]]'` |
+| seed13 bullwhip, matches | 4.359 | 4 | 4 | `'[[4]]'` |
+| seed13 bullwhip, non-match | 4.472 | 4 | 5 | `'[[5]]'` |
+| seed17 cost, upstream matches | 0.000 | 0 | 0 | `'[[0]]'` |
+| seed17 cost, upstream non-match | 0.087 | 0 | 9 | `'[[9]]'` |
+| seed29 cost, largest deviation (diff=79) | 0.802 | 1 | 80 | `'[[80]]'` |
+| seed31 bullwhip, arbitrary | 4.243 | 4 | 4 | `'[[4]]'` |
+
+**Every single ungrounded reply, matching or not, is a bare `[[N]]` with
+zero discursive text -- no visible reasoning either way.** This is not
+itself diagnostic of mechanism, though: checking the grounded baseline's
+raw replies (`diag_negotiation_tool_bullwhip_zerofix.json`, which does
+retain `downstream_final_reply`) shows the *exact same* bare-bracket
+format (`'[[5]]'`, `'[[2]]'`, `'[[3]]'`, `'[[2]]'` -- mean reply length
+5.0 characters, max 8, across all 396 grounded sessions). The
+`strict_format=True` system message governing the final-answer step
+enforces this terseness in *both* conditions. **Step 4's text-reading
+approach is inconclusive by design here** -- the model is never allowed
+to show reasoning at this step regardless of grounding, so reply text
+alone cannot distinguish the mechanisms. (The grounded cost-run diagnostic
+file, `diag_negotiation_tool_cost_postfix2.json`, predates the
+`final_reply` field being added to transcript capture and has no text to
+compare at all -- a real, pre-existing gap, not something hidden here.)
+
+### Step 5: verdict -- split by metric, not a single answer
+
+**Cost-run: mechanism (B), clearly.** The shift from 11.9% to 97.3%
+round(own_eoq) match, combined with agreement collapsing from 74.8% to
+30.9%, is a dramatic, consistent-across-all-5-seeds signature of agents
+independently reporting their own EOQ rather than negotiating. **The RQ2
+cost result should be reframed**: "ungrounded beats grounded on cost" is
+really "an undisguised standalone-EOQ decision beats an actual multi-turn
+negotiation on this task" -- a real and still-interesting finding
+(negotiation adds overhead and produces worse cost than just trusting the
+tool output), but a different claim than "memory itself hurts
+negotiation quality."
+
+**Bullwhip-run: mixed, genuinely ambiguous -- not forcing a clean
+answer.** The ungrounded numbers (99.2% match, 83.7% agree) point the
+same direction as cost-run's mechanism (B) signature, but the *grounded
+baseline itself* already shows 79.3% match and 93.2% agree -- meaning
+even with the transcript, the bullwhip-run negotiation already looks
+substantially like independent EOQ-reporting most of the time. The
+shift from grounded to ungrounded here (+19.9pp match, -9.5pp agreement)
+is real and consistent in direction with cost-run, but it is a difference
+of *degree*, not of *kind* -- there is no clean "negotiating vs. not
+negotiating" line to draw for the bullwhip-run the way there is for cost.
+**Plain statement: the bullwhip-run's RQ2 result (grounding doesn't help,
+and the bullwhip-optimizing run's bullwhip outcome is worse when
+grounded) cannot be cleanly attributed to either mechanism (A) or (B) on
+this evidence -- both the grounded and ungrounded conditions already
+behave similarly to each other on the round(own_eoq)/agreement axes, so
+whatever drives the outcome gap is not well explained by "negotiation vs.
+non-negotiation" alone.** This is reported as a genuine open question,
+not resolved here.
+
 ## How to actually run this
 
 Locally (laptop, small-scale validation only):
