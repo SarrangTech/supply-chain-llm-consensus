@@ -1409,7 +1409,7 @@ Mean paired difference (ungrounded minus grounded, n=5):
 | Contrast | Mean difference | Sign-consistency |
 |---|---|---|
 | Cost-run's cost | **-82,568** | 5/5 seeds negative |
-| Cost-run's bullwhip | +0.123 | 2/5 negative, 3/5 positive -- no consistent effect |
+| Cost-run's bullwhip | +0.123 | 3/5 negative, 2/5 positive -- no consistent effect |
 | Bullwhip-run's cost | **-22,490** | 5/5 seeds negative |
 | Bullwhip-run's bullwhip | **-2.947** | 5/5 seeds negative |
 
